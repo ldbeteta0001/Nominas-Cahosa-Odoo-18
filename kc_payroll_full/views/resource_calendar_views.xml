@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Vista de formulario para resource.calendar -->
+    <record id="view_resource_calendar_form_inherit" model="ir.ui.view">
+        <field name="name">resource.calendar.form.inherit</field>
+        <field name="model">resource.calendar</field>
+        <field name="inherit_id" ref="resource.resource_calendar_form"/>
+        <field name="arch" type="xml">
+            <!-- Agregar campos después de hours_per_day -->
+            <field name="hours_per_day" position="after">
+                <field name="es_nomina_semanal" 
+                       help="Marcar si este horario aplica para nómina semanal. En horarios semanales de día, solo se pagan 44 horas como normales, las horas adicionales se cuentan como horas extra."/>
+                <field name="nocturna" 
+                       help="Marcar si este es un turno nocturno. Los turnos nocturnos tienen lógica especial para horas que cruzan medianoche."/>
+            </field>
+        </field>
+    </record>
+</odoo>
+
