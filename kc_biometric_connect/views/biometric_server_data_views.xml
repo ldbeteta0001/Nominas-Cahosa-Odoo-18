@@ -1,0 +1,273 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- Vista de Empleados del Servidor -->
+    <record id="view_biometric_server_employee_tree" model="ir.ui.view">
+        <field name="name">biometric.server.employee.tree</field>
+        <field name="model">biometric.server.employee</field>
+        <field name="arch" type="xml">
+            <list string="Empleados del Servidor Biométrico">
+                <header>
+                    <button name="action_open_sync_wizard" string="Sincronizar Empleados" type="object" 
+                            class="btn-primary" icon="fa-sync"
+                            context="{'default_sync_type': 'employees'}"
+                            help="Sincronizar empleados desde el servidor BioTime"/>
+                </header>
+                <button name="action_create_in_odoo" string="Crear en Odoo" type="object" 
+                        class="btn-primary" icon="fa-plus" invisible="odoo_employee_id"/>
+                <field name="device_id" optional="hide"/>
+                <field name="emp_code"/>
+                <field name="full_name"/>
+                <field name="department_name"/>
+                <field name="odoo_employee_id"/>
+                <field name="hire_date"/>
+                <field name="card_no"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_biometric_server_employee_form" model="ir.ui.view">
+        <field name="name">biometric.server.employee.form</field>
+        <field name="model">biometric.server.employee</field>
+        <field name="arch" type="xml">
+            <form string="Empleado del Servidor Biométrico">
+                <header>
+                    <button name="action_create_in_odoo" string="Crear en Odoo" type="object" 
+                            class="btn-primary" invisible="odoo_employee_id"/>
+                    <button name="action_update_in_biotime" string="Actualizar en BioTime" type="object" 
+                            class="btn-secondary"/>
+                    <button name="action_delete_in_biotime" string="Eliminar de BioTime" type="object" 
+                            class="btn-danger"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="device_id" readonly="1"/>
+                            <field name="biometric_id" readonly="1"/>
+                            <field name="emp_code" readonly="1"/>
+                            <field name="first_name" readonly="1"/>
+                            <field name="last_name" readonly="1"/>
+                            <field name="full_name" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="department_id" readonly="1"/>
+                            <field name="department_name" readonly="1"/>
+                            <field name="area_ids" readonly="1"/>
+                            <field name="hire_date" readonly="1"/>
+                            <field name="birthday" readonly="1"/>
+                            <field name="gender" readonly="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group>
+                            <field name="card_no" readonly="1"/>
+                            <field name="verify_mode" readonly="1"/>
+                            <field name="app_status" readonly="1"/>
+                        </group>
+                        <group>
+                            <field name="odoo_employee_id" readonly="1"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_biometric_server_employee_search" model="ir.ui.view">
+        <field name="name">biometric.server.employee.search</field>
+        <field name="model">biometric.server.employee</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Empleados">
+                <field name="emp_code"/>
+                <field name="full_name"/>
+                <field name="first_name"/>
+                <field name="last_name"/>
+                <field name="department_name"/>
+                <field name="odoo_employee_id"/>
+                <separator/>
+                <filter string="Con Empleado en Odoo" name="has_odoo_employee" domain="[('odoo_employee_id', '!=', False)]"/>
+                <filter string="Sin Empleado en Odoo" name="no_odoo_employee" domain="[('odoo_employee_id', '=', False)]"/>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_biometric_server_employee" model="ir.actions.act_window">
+        <field name="name">Empleados del Servidor Biométrico</field>
+        <field name="res_model">biometric.server.employee</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay empleados sincronizados
+            </p>
+            <p>
+                Los empleados se sincronizan automáticamente desde el servidor BioTime.
+                Seleccione un dispositivo biométrico configurado como servidor y haga clic en "Sincronizar Empleados".
+            </p>
+        </field>
+    </record>
+    
+
+    <!-- Vista de Departamentos del Servidor -->
+    <record id="view_biometric_server_department_tree" model="ir.ui.view">
+        <field name="name">biometric.server.department.tree</field>
+        <field name="model">biometric.server.department</field>
+        <field name="arch" type="xml">
+            <list string="Departamentos del Servidor Biométrico">
+                <header>
+                    <button name="action_open_sync_wizard" string="Sincronizar Departamentos" type="object" 
+                            class="btn-primary" icon="fa-sync"
+                            context="{'default_sync_type': 'departments'}"
+                            help="Sincronizar departamentos desde el servidor BioTime"/>
+                </header>
+                <field name="device_id" optional="hide"/>
+                <field name="dept_code"/>
+                <field name="dept_name"/>
+                <field name="parent_dept_name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_biometric_server_department_form" model="ir.ui.view">
+        <field name="name">biometric.server.department.form</field>
+        <field name="model">biometric.server.department</field>
+        <field name="arch" type="xml">
+            <form string="Departamento del Servidor Biométrico">
+                <sheet>
+                    <group>
+                        <field name="device_id" readonly="1"/>
+                        <field name="biometric_id" readonly="1"/>
+                        <field name="dept_code" readonly="1"/>
+                        <field name="dept_name" readonly="1"/>
+                        <field name="parent_dept" readonly="1"/>
+                        <field name="parent_dept_name" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_biometric_server_department" model="ir.actions.act_window">
+        <field name="name">Departamentos del Servidor Biométrico</field>
+        <field name="res_model">biometric.server.department</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay departamentos sincronizados
+            </p>
+            <p>
+                Los departamentos se sincronizan automáticamente desde el servidor BioTime.
+                Seleccione un dispositivo biométrico configurado como servidor y haga clic en "Sincronizar Departamentos".
+            </p>
+        </field>
+    </record>
+    
+
+    <!-- Vista de Áreas del Servidor -->
+    <record id="view_biometric_server_area_tree" model="ir.ui.view">
+        <field name="name">biometric.server.area.tree</field>
+        <field name="model">biometric.server.area</field>
+        <field name="arch" type="xml">
+            <list string="Áreas del Servidor Biométrico">
+                <header>
+                    <button name="action_open_sync_wizard" string="Sincronizar Áreas" type="object" 
+                            class="btn-primary" icon="fa-sync"
+                            context="{'default_sync_type': 'areas'}"
+                            help="Sincronizar áreas desde el servidor BioTime"/>
+                </header>
+                <field name="device_id" optional="hide"/>
+                <field name="area_code"/>
+                <field name="area_name"/>
+                <field name="parent_area_name"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_biometric_server_area_form" model="ir.ui.view">
+        <field name="name">biometric.server.area.form</field>
+        <field name="model">biometric.server.area</field>
+        <field name="arch" type="xml">
+            <form string="Área del Servidor Biométrico">
+                <sheet>
+                    <group>
+                        <field name="device_id" readonly="1"/>
+                        <field name="biometric_id" readonly="1"/>
+                        <field name="area_code" readonly="1"/>
+                        <field name="area_name" readonly="1"/>
+                        <field name="parent_area_id" readonly="1"/>
+                        <field name="parent_area_name" readonly="1"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_biometric_server_area" model="ir.actions.act_window">
+        <field name="name">Áreas del Servidor Biométrico</field>
+        <field name="res_model">biometric.server.area</field>
+        <field name="view_mode">list,form</field>
+        <field name="domain">[]</field>
+        <field name="context">{'create': False}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay áreas sincronizadas
+            </p>
+            <p>
+                Las áreas se sincronizan automáticamente desde el servidor BioTime.
+                Seleccione un dispositivo biométrico configurado como servidor y haga clic en "Sincronizar Áreas".
+            </p>
+        </field>
+    </record>
+    
+
+    <!-- Wizards -->
+    <record id="view_biometric_update_employee_wizard_form" model="ir.ui.view">
+        <field name="name">biometric.update.employee.wizard.form</field>
+        <field name="model">biometric.update.employee.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Actualizar Empleado en BioTime">
+                <sheet>
+                    <group>
+                        <field name="device_id" readonly="1"/>
+                        <field name="employee_id" readonly="1"/>
+                        <field name="emp_code"/>
+                        <field name="first_name"/>
+                        <field name="last_name"/>
+                        <field name="department"/>
+                        <field name="area" placeholder="[1,2] o 1,2"/>
+                    </group>
+                </sheet>
+                <footer>
+                    <button name="action_update" string="Actualizar" type="object" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_biometric_delete_employee_wizard_form" model="ir.ui.view">
+        <field name="name">biometric.delete.employee.wizard.form</field>
+        <field name="model">biometric.delete.employee.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Eliminar Empleado de BioTime">
+                <sheet>
+                    <group>
+                        <field name="device_id" readonly="1"/>
+                        <field name="employee_id" readonly="1"/>
+                        <field name="employee_name" readonly="1"/>
+                    </group>
+                    <div class="alert alert-warning" role="alert">
+                        <strong>Advertencia:</strong> Esta acción eliminará permanentemente el empleado del servidor BioTime.
+                    </div>
+                </sheet>
+                <footer>
+                    <button name="action_delete" string="Eliminar" type="object" class="btn-danger"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+</odoo>

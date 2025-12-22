@@ -1,0 +1,274 @@
+<odoo>
+    <data>
+        <template id="hr_hn_portal_my_home_advance" name="Adelanto" customize_show="True"
+                  inherit_id="portal.portal_my_home" priority="30">
+            <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+                <style>
+                    .advance_card {
+                        transition: all 0.3s ease;
+                        border: 1px solid transparent !important;
+                    }
+                    .advance_card:hover {
+                        transform: translateY(-5px);
+                        box-shadow: 0 10px 25px rgba(46, 204, 113, 0.2) !important;
+                        border-color: rgba(46, 204, 113, 0.3) !important;
+                    }
+                    .advance_icon_wrapper {
+                        transition: all 0.3s ease;
+                    }
+                    .advance_card:hover .advance_icon_wrapper {
+                        transform: rotate(10deg) scale(1.1);
+                    }
+                    .advance_card:hover h4 {
+                        color: #2ecc71 !important;
+                    }
+                    .advance_badge {
+                        transition: all 0.3s ease;
+                    }
+                    .advance_card:hover .advance_badge {
+                        background-color: #2ecc71 !important;
+                        color: white !important;
+                        border-color: #2ecc71 !important;
+                    }
+                </style>
+                <t t-if="is_empl">
+                    <div class="col-lg-6 o_portal_docs mb-3">
+                        <a class="o_portal_doc_link" href="/my/advance/list" style="text-decoration: none;">
+                            <div class="card advance_card border-0 shadow-sm h-100">
+                                <div class="card-body d-flex align-items-center p-4">
+                                    <div class="o_portal_doc_icon me-4" style="min-width: 80px;">
+                                        <div class="advance_icon_wrapper rounded-circle d-flex align-items-center justify-content-center" 
+                                             style="width: 70px; height: 70px; background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);">
+                                            <i class="fa fa-money fa-2x text-white"></i>
+                                        </div>
+                                    </div>
+                                    <div class="o_portal_doc_text flex-grow-1">
+                                        <h4 class="mb-2" style="color: #2c3e50; font-weight: 600; transition: color 0.3s ease;">
+                                            <i class="fa fa-credit-card me-2" style="color: #2ecc71;"></i>
+                                            Mis Adelantos de Salario
+                                        </h4>
+                                        <p class="text-muted mb-2" style="font-size: 14px;">
+                                            <i class="fa fa-calendar-check-o me-1" style="color: #95a5a6;"></i>
+                                            Consulte y solicite sus adelantos de salario
+                                        </p>
+                                        <small class="advance_badge badge bg-light text-primary border" style="font-size: 11px;">
+                                            <i class="fa fa-file-text-o me-1"></i>
+                                            Gestión de Adelantos
+                                        </small>
+                                    </div>
+                                    <div class="text-end" style="min-width: 30px;">
+                                        <i class="fa fa-chevron-right text-muted" style="font-size: 20px;"></i>
+                                    </div>
+                                </div>
+                            </div>
+                        </a>
+                    </div>
+                </t>
+            </xpath>
+        </template>
+        <template id="template_list_of_advance" name="Página Portal">
+            <t t-call="portal.portal_layout">
+                <div class="container list_js_expense_class">
+                    <div class="mb-2">
+                        <a href="/create_advance/new" class="btn btn-primary">Adicionar adelanto de salario</a>
+                    </div>
+                    <table class="table">
+                        <thead>
+                            <tr>
+                                <th></th>
+                                <th>Adelanto</th>
+                                <th>Empleado</th>
+                                <th>Fecha</th>
+                                <th>Importe</th>
+                                <th>Adelanto 13avo</th>
+                                <th>Adelanto 14avo</th>
+                                <th>Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <t t-foreach="items" t-as="item">
+                                <tr>
+                                    <td>
+                                        <input type="checkbox" t-att-id="'checkbox_' + str(item.id)"
+                                               t-att-disabled="'disabled' if item.state != 'draft' else None"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="item.name"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="item.employee_id.name"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="item.date"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="item.advance"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="item.advance_thirteen_avo"/>
+                                    </td>
+                                    <td>
+                                        <t t-esc="item.advance_fourteen_avo"/>
+                                    </td>
+                                    <td name="advance_status">
+                                        <t t-if="item.state == 'draft'" name="advance_status_draft">
+                                            <span class="badge rounded-pill text-primary">
+                                                <i class="fa fa-fw fa-star" aria-label="borrador"
+                                                   title="Borrador"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Borrador</span>
+                                            </span>
+                                        </t>
+                                        <t t-if="item.state == 'submit'" name="advance_status_submit">
+                                            <span class="badge rounded-pill text-bg-light">
+                                                <i class="fa fa-fw fa-clock-o" aria-label="Enviado"
+                                                   title="Enviado"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Enviado</span>
+                                            </span>
+                                        </t>
+                                        <t t-if="item.state == 'waiting_approval'" name="advance_status_waiting_approval">
+                                            <span class="badge rounded-pill text-bg-light">
+                                                <i class="fa fa-fw fa-clock-o" aria-label="Esperando aprobación"
+                                                   title="Esperando aprobación"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Esperando aprobación</span>
+                                            </span>
+                                        </t>
+                                        <t t-if="item.state == 'process'" name="advance_status_process">
+                                            <span class="badge rounded-pill text-bg-light">
+                                                <i class="fa fa-fw fa-clock-o" aria-label="Procesado"
+                                                   title="Procesado"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Procesado</span>
+                                            </span>
+                                        </t>
+                                        <t t-if="item.state == 'reject'" name="advance_status_reject">
+                                            <span class="badge rounded-pill text-bg-danger">
+                                                <i class="fa fa-fw fa-clock-o" aria-label="Rechazada" title="Rechazada"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Rechazada</span>
+                                            </span>
+                                        </t>
+                                        <t t-elif="item.state == 'cancel'">
+                                            <span class="badge rounded-pill text-bg-warning">
+                                                <i class="fa fa-fw fa-remove" aria-label="Cancelado" title="Cancelado"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Cancelado</span>
+                                            </span>
+                                        </t>
+                                        <t t-elif="item.state == 'approve'">
+                                            <span class="badge rounded-pill text-bg-success">
+                                                <i class="fa fa-fw fa-circle text-success" aria-label="Aprobado"
+                                                   title="Aprobado"
+                                                   role="img"/>
+                                                <span class="d-none d-md-inline">Aprobado</span>
+                                            </span>
+                                        </t>
+                                    </td>
+                                    <td>
+                                        <a t-att-href="'/detail/advance?advance_id=' + str(item.id)"
+                                           class="btn btn-primary">Ver detalle
+                                        </a>
+                                    </td>
+                                </tr>
+                            </t>
+                        </tbody>
+                    </table>
+
+                    <!-- Paginación -->
+                    <nav aria-label="Page navigation">
+                        <ul class="pagination">
+                            <t t-foreach="range(total_pages)" t-as="p">
+                                <li t-att-class="'page-item' + (' active' if page == p else '')">
+                                    <a class="page-link" t-att-href="'/my/advance/list?page=' + str(p)">
+                                        <t t-esc="p+1"/>
+                                    </a>
+                                </li>
+                            </t>
+                        </ul>
+                    </nav>
+                </div>
+            </t>
+        </template>
+        <template id="model_record_advance" name="Record Loan">
+        <t t-call="portal.portal_layout">
+            <div class="container">
+                <div class="card shadow">
+                    <div class="card-header bg-primary text-white">
+                        <h3 class="card-title">Detalle del Registro</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <strong>Adelanto:</strong>
+                                    </label>
+                                    <p class="form-control-plaintext">
+                                        <t t-esc="record.name"/>
+                                    </p>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <strong>Fecha:</strong>
+                                    </label>
+                                    <p class="form-control-plaintext">
+                                        <t t-esc="record.date"/>
+                                    </p>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <strong>Importe:</strong>
+                                    </label>
+                                    <p class="form-control-plaintext">
+                                        <t t-esc="record.advance"/>
+                                    </p>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <strong>Razón:</strong>
+                                    </label>
+                                    <p class="form-control-plaintext">
+                                        <t t-esc="record.reason"/>
+                                    </p>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label">
+                                        <strong>Estado:</strong>
+                                    </label>
+                                    <p class="form-control-plaintext">
+                                        <t t-if="record.state == 'draft'" name="leave_state_draft">
+                                            <span class="d-none d-md-inline">Borrador</span>
+                                        </t>
+                                        <t t-if="record.state == 'submit'" name="leave_state_submit">
+                                            <span class="d-none d-md-inline">Enviado</span>
+                                        </t>
+                                        <t t-if="record.state == 'waiting_approval'" name="leave_state_waiting_approval">
+                                            <span class="d-none d-md-inline">Esperando aprobación</span>
+                                        </t>
+                                        <t t-if="record.state == 'process'" name="leave_state_process">
+                                            <span class="d-none d-md-inline">Procesado</span>
+                                        </t>
+                                        <t t-if="record.state == 'reject'" name="leave_state_reject">
+                                            <span class="d-none d-md-inline">Rechazada</span>
+                                        </t>
+                                        <t t-if="record.state == 'cancel'" name="leave_state_cancel">
+                                            <span class="d-none d-md-inline">Cancelada</span>
+                                        </t>
+                                        <t t-if="record.state == 'approve'" name="leave_state_approve">
+                                            <span class="d-none d-md-inline">Aprobado</span>
+                                        </t>
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </t>
+    </template>
+    </data>
+</odoo>

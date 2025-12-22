@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_biometric_sync_wizard_form" model="ir.ui.view">
+        <field name="name">biometric.sync.wizard.form</field>
+        <field name="model">biometric.sync.wizard</field>
+        <field name="arch" type="xml">
+            <form string="Sincronizar Asistencias Biométricas">
+                <group>
+                    <group>
+                        <field name="device_id" required="1"/>
+                        <field name="sync_mode"/>
+                    </group>
+                    <group>
+                        <field name="date_from" invisible="sync_mode == 'new'" required="1"/>
+                        <field name="date_to" invisible="sync_mode == 'new'" required="1"/>
+                    </group>
+                </group>
+                <separator string="Filtros Opcionales"/>
+                <group>
+                    <field name="employee_ids" widget="many2many_tags" 
+                           placeholder="Dejar vacío para sincronizar todos los empleados"
+                           help="Si selecciona empleados específicos, solo se sincronizarán los registros de estos empleados"/>
+                </group>
+                <group>
+                    <field name="employee_ids" widget="many2many_tags" 
+                           placeholder="Dejar vacío para sincronizar todos los empleados"
+                           help="Si selecciona empleados específicos, solo se sincronizarán los registros de estos empleados"/>
+                </group>
+                <footer>
+                    <button name="action_sync" string="Sincronizar" type="object" class="btn-primary"/>
+                    <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                </footer>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_biometric_sync_wizard" model="ir.actions.act_window">
+        <field name="name">Sincronizar Asistencias</field>
+        <field name="res_model">biometric.sync.wizard</field>
+        <field name="view_mode">form</field>
+        <field name="target">new</field>
+        <field name="context">{}</field>
+    </record>
+</odoo>
+

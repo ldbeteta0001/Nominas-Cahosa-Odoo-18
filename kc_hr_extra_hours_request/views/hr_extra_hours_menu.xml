@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- Menú principal de Horas Extra -->
+        <menuitem id="menu_hr_extra_hours_root" 
+                  name="Horas Extra" 
+                  parent="hr.menu_hr_root" 
+                  sequence="50"/>
+
+        <!-- Menú de solicitudes -->
+        <menuitem id="menu_hr_extra_hours_requests" 
+                  name="Solicitudes" 
+                  parent="menu_hr_extra_hours_root" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request" 
+                  sequence="10"/>
+
+        <!-- Menú de motivos -->
+        <menuitem id="menu_hr_extra_hours_reasons" 
+                  name="Motivos" 
+                  parent="menu_hr_extra_hours_root" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_reason" 
+                  sequence="20"
+                  groups="hr.group_hr_manager"/>
+
+        <!-- Menú de reportes -->
+        <menuitem id="menu_hr_extra_hours_reports" 
+                  name="Reportes" 
+                  parent="menu_hr_extra_hours_root" 
+                  sequence="30"/>
+
+        <!-- Submenús de reportes -->
+        <menuitem id="menu_hr_extra_hours_reports_analysis" 
+                  name="Análisis" 
+                  parent="menu_hr_extra_hours_reports" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request_pivot" 
+                  sequence="10"/>
+
+        <menuitem id="menu_hr_extra_hours_reports_graphs" 
+                  name="Gráficos" 
+                  parent="menu_hr_extra_hours_reports" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request_graph" 
+                  sequence="20"/>
+
+        <menuitem id="menu_hr_extra_hours_reports_employee" 
+                  name="Por Empleado" 
+                  parent="menu_hr_extra_hours_reports" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request_employee_report" 
+                  sequence="30"/>
+
+        <menuitem id="menu_hr_extra_hours_reports_reason" 
+                  name="Por Motivo" 
+                  parent="menu_hr_extra_hours_reports" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request_reason_report" 
+                  sequence="40"/>
+
+        <menuitem id="menu_hr_extra_hours_reports_branch" 
+                  name="Por Sucursal" 
+                  parent="menu_hr_extra_hours_reports" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request_branch_report" 
+                  sequence="50"/>
+
+        <menuitem id="menu_hr_extra_hours_reports_export" 
+                  name="Exportar a Excel" 
+                  parent="menu_hr_extra_hours_reports" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_report_wizard" 
+                  sequence="60"/>
+
+        <!-- Menú en el portal para empleados -->
+        <!-- Nota: En Odoo 18, los menús del portal se manejan a través de templates y rutas, no mediante menús tradicionales -->
+        <!-- Si necesitas acceso desde el portal, debes crear templates que hereden de portal.portal_layout -->
+        <!-- <menuitem id="menu_portal_extra_hours" 
+                  name="Mis Horas Extra" 
+                  parent="portal.portal_menu" 
+                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request" 
+                  sequence="20"/> -->
+
+    </data>
+</odoo>

@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<odoo>
+
+    <!--         EMPLOYEE VIEW DATOS NOMINA        -->
+    <record id="hr_employee_view_form_inherit" model="ir.ui.view">
+        <field name="name">hr.employee.view.form.inherit</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='department_id']" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </xpath>
+            <xpath expr="//field[@name='job_id']" position="attributes">
+                <attribute name="readonly">1</attribute>
+            </xpath>
+             <xpath expr="//group[@name='departure']" position="after">
+                <group name="departure" string="Departure" invisible="not is_low or not active">
+                    <field name="is_low"/>
+                    <field name="departure_reason_id" options="{'no_edit': True, 'no_create': True, 'no_open': True}"/>
+                    <field name="departure_description"/>
+                    <field name="departure_date"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- <record model="ir.ui.view" id="hr_employee_filter_inherit">
+        <field name="name">hr.employee.filter</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_filter" />
+        <field name="arch" type="xml">
+             <xpath expr="//field[@name='private_car_plate']" position="after">
+                   <field name="departure_reason_id" />
+                   <field name="departure_date" />
+             </xpath>
+             <xpath expr="//filter[@name='my_department']" position="after">
+                 <filter name="is_low" string="Dados de baja" domain="[('is_low', '=', True)]"/>
+             </xpath>
+        </field>
+    </record> -->
+</odoo>

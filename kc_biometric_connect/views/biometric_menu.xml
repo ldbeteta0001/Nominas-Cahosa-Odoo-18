@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <menuitem id="menu_biometric_root"
+              name="Biométrico"
+              parent="hr_attendance.menu_hr_attendance_root"
+              sequence="100"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
+    <menuitem id="menu_biometric_devices"
+              name="Dispositivos"
+              parent="menu_biometric_root"
+              action="kc_biometric_connect.action_biometric_device"
+              sequence="10"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
+    <menuitem id="menu_biometric_attendance"
+              name="Registros Biométricos"
+              parent="menu_biometric_root"
+              action="kc_biometric_connect.action_biometric_attendance"
+              sequence="20"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
+    <!-- Menú para datos del servidor biométrico -->
+    <menuitem id="menu_biometric_server_data"
+              name="Datos del Servidor"
+              parent="menu_biometric_root"
+              sequence="30"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
+    <menuitem id="menu_biometric_server_employees"
+              name="Empleados del Servidor"
+              parent="menu_biometric_server_data"
+              action="action_biometric_server_employee"
+              sequence="10"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
+    <menuitem id="menu_biometric_server_departments"
+              name="Departamentos"
+              parent="menu_biometric_server_data"
+              action="action_biometric_server_department"
+              sequence="20"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+
+    <menuitem id="menu_biometric_server_areas"
+              name="Áreas"
+              parent="menu_biometric_server_data"
+              action="action_biometric_server_area"
+              sequence="30"
+              groups="hr_attendance.group_hr_attendance_officer"/>
+</odoo>
+

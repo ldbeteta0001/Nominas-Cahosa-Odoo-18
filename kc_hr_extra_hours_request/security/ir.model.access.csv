@@ -1,0 +1,9 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_hr_extra_hours_request_employee,hr.extra.hours.request.employee,model_hr_extra_hours_request,hr.group_hr_user,1,1,1,0
+access_hr_extra_hours_request_manager,hr.extra.hours.request.manager,model_hr_extra_hours_request,hr_extra_hours_request.group_hr_extra_hours_manager,1,1,1,1
+access_hr_extra_hours_request_hr,hr.extra.hours.request.hr,model_hr_extra_hours_request,hr.group_hr_manager,1,1,1,1
+access_hr_extra_hours_request_portal,hr.extra.hours.request.portal,model_hr_extra_hours_request,base.group_portal,1,1,1,0
+access_hr_extra_hours_reason_employee,hr.extra.hours.reason.employee,model_hr_extra_hours_reason,hr.group_hr_user,1,0,0,0
+access_hr_extra_hours_reason_manager,hr.extra.hours.reason.manager,model_hr_extra_hours_reason,hr_extra_hours_request.group_hr_extra_hours_manager,1,1,1,1
+access_hr_extra_hours_reason_hr,hr.extra.hours.reason.hr,model_hr_extra_hours_reason,hr.group_hr_manager,1,1,1,1
+access_hr_extra_hours_reason_portal,hr.extra.hours.reason.portal,model_hr_extra_hours_reason,base.group_portal,1,0,0,0

@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- Vista de lista para solicitudes de horas extra -->
+        <record id="view_hr_extra_hours_request_list" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.list</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <list string="Solicitudes de Horas Extra" 
+                      default_order="date desc, id desc"
+                      decoration-success="state == 'approved'"
+                      decoration-warning="state == 'to_approve'"
+                      decoration-danger="state == 'rejected'"
+                      decoration-muted="state == 'draft'">
+                    <field name="name" string="Referencia"/>
+                    <field name="employee_id" string="Empleado"/>
+                    <field name="date" string="Fecha"/>
+                    <field name="check_in" string="Entrada"/>
+                    <field name="check_out" string="Salida"/>
+                    <field name="type" string="Tipo"/>
+                    <field name="duration_hours" string="Duración (h)"/>
+                    <field name="payable_hours" string="Horas Pagables"/>
+                    <field name="reason_id" string="Motivo"/>
+                    <field name="state" string="Estado" widget="badge"/>
+                    <field name="manager_id" string="Jefe"/>
+                    <field name="approved_by" string="Aprobado por"/>
+                    <field name="approved_date" string="Fecha Aprobación"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Vista de formulario para solicitudes de horas extra -->
+        <record id="view_hr_extra_hours_request_form" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.form</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <form string="Solicitud de Horas Extra">
+                    <header>
+                        <button name="action_submit" string="Enviar" type="object" 
+                                class="btn-primary" 
+                                invisible="state != 'draft'"/>
+                        <button name="action_approve" string="Aprobar" type="object" 
+                                class="btn-success" 
+                                invisible="state != 'to_approve'"
+                                groups="hr.group_hr_manager"/>
+                        <button name="action_reject" string="Rechazar" type="object" 
+                                class="btn-danger" 
+                                invisible="state != 'to_approve'"
+                                groups="hr.group_hr_manager"/>
+                        <button name="action_reset_to_draft" string="Resetear a Borrador" type="object" 
+                                class="btn-secondary" 
+                                invisible="state not in ['approved', 'rejected']"
+                                groups="hr.group_hr_manager"/>
+                        <field name="state" widget="statusbar" statusbar_visible="draft,to_approve,approved,rejected"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_button_box" name="button_box">
+                            <button name="action_view_attendance" string="Ver Asistencia" type="object" 
+                                    class="oe_stat_button" icon="fa-calendar"
+                                    invisible="not attendance_id"/>
+                        </div>
+                        <div class="oe_title">
+                            <h1>
+                                <field name="name" readonly="1"/>
+                            </h1>
+                        </div>
+                        <group>
+                            <group name="employee_info">
+                                <field name="employee_id" options="{'no_create': True}"/>
+                                <field name="manager_id" readonly="1"/>
+                                <field name="company_id" readonly="1"/>
+                                <field name="department_id" readonly="1"/>
+                                <field name="branch_id" readonly="1"/>
+                            </group>
+                            <group name="request_info">
+                                <field name="date" readonly="state != 'draft'"/>
+                                <field name="type" readonly="state != 'draft'"/>
+                                <field name="reason_id" readonly="state != 'draft'"/>
+                                <field name="attendance_id" readonly="1"/>
+                            </group>
+                        </group>
+                        <group>
+                            <group name="time_info">
+                                <field name="check_in" readonly="state != 'draft'"/>
+                                <field name="check_out" readonly="state != 'draft'"/>
+                                <field name="duration_hours" readonly="1"/>
+                                <field name="payable_hours" readonly="state in ['approved', 'rejected']"/>
+                            </group>
+                            <group name="approval_info">
+                                <field name="approved_by" readonly="1"/>
+                                <field name="approved_date" readonly="1"/>
+                                <field name="rejection_reason" readonly="1"/>
+                            </group>
+                        </group>
+                        <group string="Distribución de Horas" name="overtime_ranges" invisible="duration_hours == 0">
+                            <group name="hours_normal_group" string="Horas Normales (100%)">
+                                <field name="hours_normal" readonly="1" widget="float" 
+                                       options="{'precision': 2}" 
+                                       class="text-success"/>
+                            </group>
+                            <group name="hours_25_group" string="Horas Extra 25%">
+                                <field name="hours_25" readonly="1" widget="float" 
+                                       options="{'precision': 2}" 
+                                       class="text-info"/>
+                            </group>
+                            <group name="hours_50_group" string="Horas Extra 50%">
+                                <field name="hours_50" readonly="1" widget="float" 
+                                       options="{'precision': 2}" 
+                                       class="text-warning"/>
+                            </group>
+                            <group name="hours_75_group" string="Horas Extra 75%">
+                                <field name="hours_75" readonly="1" widget="float" 
+                                       options="{'precision': 2}" 
+                                       class="text-danger"/>
+                            </group>
+                        </group>
+                        <group name="justification">
+                            <field name="justification" readonly="state != 'draft'"/>
+                        </group>
+                        <notebook>
+                            <page string="Actividades" name="activities">
+                                <field name="activity_ids" readonly="1"/>
+                            </page>
+                            <page string="Mensajes" name="messages">
+                                <field name="message_ids" readonly="1"/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Vista kanban para solicitudes de horas extra -->
+        <record id="view_hr_extra_hours_request_kanban" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.kanban</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <kanban string="Solicitudes de Horas Extra" 
+                        default_group_by="state"
+                        class="o_kanban_small_column">
+                    <field name="name"/>
+                    <field name="employee_id"/>
+                    <field name="date"/>
+                    <field name="duration_hours"/>
+                    <field name="payable_hours"/>
+                    <field name="reason_id"/>
+                    <field name="state"/>
+                    <field name="manager_id"/>
+                    <templates>
+                        <t t-name="kanban-box">
+                            <div class="oe_kanban_card oe_kanban_global_click">
+                                <div class="oe_kanban_content">
+                                    <div class="o_kanban_record_top">
+                                        <div class="o_kanban_record_headings">
+                                            <strong class="o_kanban_record_title">
+                                                <field name="name"/>
+                                            </strong>
+                                        </div>
+                                        <div class="o_kanban_record_subtitle">
+                                            <field name="employee_id"/>
+                                        </div>
+                                    </div>
+                                    <div class="o_kanban_record_body">
+                                        <div class="o_kanban_record_details">
+                                            <div class="o_kanban_record_detail">
+                                                <i class="fa fa-calendar"/> <field name="date"/>
+                                            </div>
+                                            <div class="o_kanban_record_detail">
+                                                <i class="fa fa-clock-o"/> <field name="duration_hours"/> h
+                                            </div>
+                                            <div class="o_kanban_record_detail">
+                                                <i class="fa fa-money"/> <field name="payable_hours"/> h pagables
+                                            </div>
+                                            <div class="o_kanban_record_detail">
+                                                <i class="fa fa-tag"/> <field name="reason_id"/>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="o_kanban_record_bottom">
+                                        <div class="oe_kanban_bottom_left">
+                                            <field name="manager_id"/>
+                                        </div>
+                                        <div class="oe_kanban_bottom_right">
+                                            <field name="state" widget="label_selection"/>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </t>
+                    </templates>
+                </kanban>
+            </field>
+        </record>
+
+        <!-- Vista de búsqueda para solicitudes de horas extra -->
+        <record id="view_hr_extra_hours_request_search" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.search</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <search string="Buscar Solicitudes de Horas Extra">
+                    <field name="name" string="Referencia"/>
+                    <field name="employee_id" string="Empleado"/>
+                    <field name="manager_id" string="Jefe"/>
+                    <field name="reason_id" string="Motivo"/>
+                    <field name="attendance_id" string="Asistencia"/>
+                    <separator/>
+                    <filter string="Por Aprobar" name="to_approve" domain="[('state', '=', 'to_approve')]"/>
+                    <filter string="Aprobadas" name="approved" domain="[('state', '=', 'approved')]"/>
+                    <filter string="Rechazadas" name="rejected" domain="[('state', '=', 'rejected')]"/>
+                    <filter string="Borrador" name="draft" domain="[('state', '=', 'draft')]"/>
+                    <separator/>
+                    <filter string="Entrada Anticipada" name="early" domain="[('type', '=', 'early')]"/>
+                    <filter string="Salida Tardía" name="late" domain="[('type', '=', 'late')]"/>
+                    <filter string="Ambas" name="both" domain="[('type', '=', 'both')]"/>
+                    <separator/>
+                    <filter string="Este Mes" name="this_month" 
+                            domain="[('date', '&gt;=', (context_today() + relativedelta(day=1)).strftime('%Y-%m-%d')),
+                                     ('date', '&lt;', (context_today() + relativedelta(months=1, day=1)).strftime('%Y-%m-%d'))]"/>
+                    <filter string="Este Año" name="this_year" 
+                            domain="[('date', '&gt;=', (context_today() + relativedelta(month=1, day=1)).strftime('%Y-%m-%d')),
+                                     ('date', '&lt;', (context_today() + relativedelta(years=1, month=1, day=1)).strftime('%Y-%m-%d'))]"/>
+                    <separator/>
+                    <group expand="0" string="Agrupar Por">
+                        <filter string="Empleado" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                        <filter string="Estado" name="group_state" context="{'group_by': 'state'}"/>
+                        <filter string="Tipo" name="group_type" context="{'group_by': 'type'}"/>
+                        <filter string="Motivo" name="group_reason" context="{'group_by': 'reason_id'}"/>
+                        <filter string="Jefe" name="group_manager" context="{'group_by': 'manager_id'}"/>
+                        <filter string="Mes" name="group_month" context="{'group_by': 'month'}"/>
+                        <filter string="Año" name="group_year" context="{'group_by': 'year'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Vista de formulario para motivos de horas extra -->
+        <record id="view_hr_extra_hours_reason_form" model="ir.ui.view">
+            <field name="name">hr.extra.hours.reason.form</field>
+            <field name="model">hr.extra.hours.reason</field>
+            <field name="arch" type="xml">
+                <form string="Motivo de Horas Extra">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="name"/>
+                                <field name="code"/>
+                                <field name="sequence"/>
+                                <field name="active"/>
+                            </group>
+                            <group>
+                                <field name="description"/>
+                            </group>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Vista de lista para motivos de horas extra -->
+        <record id="view_hr_extra_hours_reason_list" model="ir.ui.view">
+            <field name="name">hr.extra.hours.reason.list</field>
+            <field name="model">hr.extra.hours.reason</field>
+            <field name="arch" type="xml">
+                <list string="Motivos de Horas Extra" default_order="sequence, name">
+                    <field name="sequence" widget="handle"/>
+                    <field name="name"/>
+                    <field name="code"/>
+                    <field name="active"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Acciones -->
+        <record id="action_hr_extra_hours_request" model="ir.actions.act_window">
+            <field name="name">Solicitudes de Horas Extra</field>
+            <field name="res_model">hr.extra.hours.request</field>
+            <field name="view_mode">list,form,kanban</field>
+            <field name="context">{'search_default_to_approve': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    ¡Crear una nueva solicitud de horas extra!
+                </p>
+                <p>
+                    Las solicitudes de horas extra se pueden crear manualmente o 
+                    se generan automáticamente cuando se detectan horas fuera del horario laboral.
+                </p>
+            </field>
+        </record>
+
+        <record id="action_hr_extra_hours_reason" model="ir.actions.act_window">
+            <field name="name">Motivos de Horas Extra</field>
+            <field name="res_model">hr.extra.hours.reason</field>
+            <field name="view_mode">list,form</field>
+        </record>
+
+    </data>
+</odoo>

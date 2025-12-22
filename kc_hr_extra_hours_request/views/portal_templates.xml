@@ -1,0 +1,416 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- Agregar enlace en el home del portal -->
+        <template id="portal_extra_hours_home" name="Horas Extra" 
+                  inherit_id="portal.portal_my_home" priority="45">
+            <xpath expr="//div[hasclass('o_portal_docs')]" position="inside">
+                <style>
+                    .extra_hours_card {
+                        transition: all 0.3s ease;
+                        border: 1px solid transparent !important;
+                    }
+                    .extra_hours_card:hover {
+                        transform: translateY(-5px);
+                        box-shadow: 0 10px 25px rgba(52, 152, 219, 0.2) !important;
+                        border-color: rgba(52, 152, 219, 0.3) !important;
+                    }
+                    .extra_hours_icon_wrapper {
+                        transition: all 0.3s ease;
+                    }
+                    .extra_hours_card:hover .extra_hours_icon_wrapper {
+                        transform: rotate(10deg) scale(1.1);
+                    }
+                    .extra_hours_card:hover h4 {
+                        color: #3498db !important;
+                    }
+                    .extra_hours_badge {
+                        transition: all 0.3s ease;
+                    }
+                    .extra_hours_card:hover .extra_hours_badge {
+                        background-color: #3498db !important;
+                        color: white !important;
+                        border-color: #3498db !important;
+                    }
+                </style>
+                <t t-set="employee" t-value="request.env['hr.employee'].sudo().search([('user_id', '=', request.env.user.id)], limit=1)"/>
+                <div class="col-lg-6 o_portal_docs mb-3">
+                    <a class="o_portal_doc_link" href="/my/extra-hours" style="text-decoration: none;">
+                        <div class="card extra_hours_card border-0 shadow-sm h-100">
+                            <div class="card-body d-flex align-items-center p-4">
+                                <div class="o_portal_doc_icon me-4" style="min-width: 80px;">
+                                    <div class="extra_hours_icon_wrapper rounded-circle d-flex align-items-center justify-content-center" 
+                                         style="width: 70px; height: 70px; background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);">
+                                        <i class="fa fa-clock-o fa-2x text-white"></i>
+                                    </div>
+                                </div>
+                                <div class="o_portal_doc_text flex-grow-1">
+                                    <h4 class="mb-2" style="color: #2c3e50; font-weight: 600; transition: color 0.3s ease;">
+                                        <i class="fa fa-hourglass-half me-2" style="color: #3498db;"></i>
+                                        Mis Horas Extra
+                                    </h4>
+                                    <p class="text-muted mb-2" style="font-size: 14px;">
+                                        <i class="fa fa-calendar-check-o me-1" style="color: #95a5a6;"></i>
+                                        Consulte y solicite sus horas extra
+                                    </p>
+                                    <small class="extra_hours_badge badge bg-light text-primary border" style="font-size: 11px;">
+                                        <i class="fa fa-file-text-o me-1"></i>
+                                        Gestión de Solicitudes
+                                    </small>
+                                </div>
+                                <div class="text-end" style="min-width: 30px;">
+                                    <i class="fa fa-chevron-right text-muted" style="font-size: 20px;"></i>
+                                </div>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+            </xpath>
+        </template>
+
+        <!-- Template para cuando no hay empleado asociado -->
+        <template id="portal_no_employee" name="No Employee Found">
+            <t t-call="portal.portal_layout">
+                <t t-set="page_name" t-value="'extra_hours'"/>
+                <div class="container">
+                    <div class="alert alert-warning" role="alert">
+                        <h4 class="alert-heading">Empleado no encontrado</h4>
+                        <p>No se encontró un empleado activo asociado a su usuario. Por favor, contacte al administrador del sistema.</p>
+                        <hr/>
+                        <p class="mb-0">
+                            <a href="/my/home" class="btn btn-primary">Volver al inicio</a>
+                        </p>
+                    </div>
+                </div>
+            </t>
+        </template>
+
+        <!-- Template para lista de solicitudes de horas extra -->
+        <template id="portal_my_extra_hours" name="Mis Horas Extra">
+            <t t-call="portal.portal_layout">
+                <t t-set="page_name" t-value="page_name"/>
+                <div class="container">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <h2>Mis Horas Extra</h2>
+                                <a href="/my/extra-hours/new" class="btn btn-primary">
+                                    <i class="fa fa-plus"></i> Nueva Solicitud
+                                </a>
+                            </div>
+
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Referencia</th>
+                                            <th>Fecha</th>
+                                            <th>Tipo</th>
+                                            <th>Duración</th>
+                                            <th>Horas Pagables</th>
+                                            <th>Motivo</th>
+                                            <th>Estado</th>
+                                            <th>Acciones</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-if="not requests">
+                                            <tr>
+                                                <td colspan="8" class="text-center">
+                                                    <p class="text-muted">No hay solicitudes de horas extra registradas.</p>
+                                                </td>
+                                            </tr>
+                                        </t>
+                                        <t t-foreach="requests" t-as="req">
+                                            <tr>
+                                                <td>
+                                                    <a t-att-href="'/my/extra-hours/' + str(req.id)">
+                                                        <t t-esc="req.name"/>
+                                                    </a>
+                                                </td>
+                                                <td><t t-esc="req.date"/></td>
+                                                <td>
+                                                    <span t-esc="dict(req._fields['type'].selection)[req.type]"/>
+                                                </td>
+                                                <td><t t-esc="'%.2f' % req.duration_hours"/> h</td>
+                                                <td><t t-esc="'%.2f' % req.payable_hours"/> h</td>
+                                                <td><t t-esc="req.reason_id.name or ''"/></td>
+                                                <td>
+                                                    <t t-if="req.state == 'approved'">
+                                                        <span class="badge badge-success">
+                                                            <t t-esc="dict(req._fields['state'].selection)[req.state]"/>
+                                                        </span>
+                                                    </t>
+                                                    <t t-elif="req.state == 'to_approve'">
+                                                        <span class="badge badge-warning">
+                                                            <t t-esc="dict(req._fields['state'].selection)[req.state]"/>
+                                                        </span>
+                                                    </t>
+                                                    <t t-elif="req.state == 'rejected'">
+                                                        <span class="badge badge-danger">
+                                                            <t t-esc="dict(req._fields['state'].selection)[req.state]"/>
+                                                        </span>
+                                                    </t>
+                                                    <t t-else="">
+                                                        <span class="badge badge-secondary">
+                                                            <t t-esc="dict(req._fields['state'].selection)[req.state]"/>
+                                                        </span>
+                                                    </t>
+                                                </td>
+                                                <td>
+                                                    <a t-att-href="'/my/extra-hours/' + str(req.id)" 
+                                                       class="btn btn-sm btn-primary">
+                                                        Ver
+                                                    </a>
+                                                </td>
+                                            </tr>
+                                        </t>
+                                    </tbody>
+                                </table>
+                            </div>
+
+                            <!-- Paginación -->
+                            <t t-if="total_pages > 1">
+                                <nav aria-label="Page navigation">
+                                    <ul class="pagination justify-content-center">
+                                        <li t-attf-class="page-item #{'disabled' if page == 1 else ''}">
+                                            <a class="page-link" t-attf-href="/my/extra-hours/page/#{page - 1 if page &gt; 1 else 1}">
+                                                Anterior
+                                            </a>
+                                        </li>
+                                        <t t-foreach="range(1, total_pages + 1)" t-as="p">
+                                            <li t-attf-class="page-item #{'active' if page == p else ''}">
+                                                <a class="page-link" t-attf-href="/my/extra-hours/page/#{p}">
+                                                    <t t-esc="p"/>
+                                                </a>
+                                            </li>
+                                        </t>
+                                        <li t-attf-class="page-item #{'disabled' if page == total_pages else ''}">
+                                            <a class="page-link" t-attf-href="/my/extra-hours/page/#{page + 1 if page &lt; total_pages else total_pages}">
+                                                Siguiente
+                                            </a>
+                                        </li>
+                                    </ul>
+                                </nav>
+                            </t>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </template>
+
+        <!-- Template para detalle de solicitud -->
+        <template id="portal_extra_hours_detail" name="Detalle de Horas Extra">
+            <t t-call="portal.portal_layout">
+                <t t-set="page_name" t-value="page_name"/>
+                <div class="container">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <a href="/my/extra-hours" class="btn btn-secondary">
+                                    <i class="fa fa-arrow-left"></i> Volver a la lista
+                                </a>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="mb-0">Solicitud: <t t-esc="extra_hours_request.name"/></h3>
+                                </div>
+                                <div class="card-body">
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <strong>Estado:</strong>
+                                            <t t-if="extra_hours_request.state == 'approved'">
+                                                <span class="badge badge-success">
+                                                    <t t-esc="dict(extra_hours_request._fields['state'].selection)[extra_hours_request.state]"/>
+                                                </span>
+                                            </t>
+                                            <t t-elif="extra_hours_request.state == 'to_approve'">
+                                                <span class="badge badge-warning">
+                                                    <t t-esc="dict(extra_hours_request._fields['state'].selection)[extra_hours_request.state]"/>
+                                                </span>
+                                            </t>
+                                            <t t-elif="extra_hours_request.state == 'rejected'">
+                                                <span class="badge badge-danger">
+                                                    <t t-esc="dict(extra_hours_request._fields['state'].selection)[extra_hours_request.state]"/>
+                                                </span>
+                                            </t>
+                                            <t t-else="">
+                                                <span class="badge badge-secondary">
+                                                    <t t-esc="dict(extra_hours_request._fields['state'].selection)[extra_hours_request.state]"/>
+                                                </span>
+                                            </t>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Fecha:</strong> <t t-esc="extra_hours_request.date"/>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <strong>Hora de Entrada:</strong> 
+                                            <t t-esc="extra_hours_request.check_in.strftime('%Y-%m-%d %H:%M:%S') if extra_hours_request.check_in else ''"/>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Hora de Salida:</strong> 
+                                            <t t-esc="extra_hours_request.check_out.strftime('%Y-%m-%d %H:%M:%S') if extra_hours_request.check_out else ''"/>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <strong>Tipo:</strong> 
+                                            <t t-esc="dict(extra_hours_request._fields['type'].selection)[extra_hours_request.type]"/>
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Duración:</strong> 
+                                            <t t-esc="'%.2f' % extra_hours_request.duration_hours"/> horas
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <div class="col-md-6">
+                                            <strong>Horas Pagables:</strong> 
+                                            <t t-esc="'%.2f' % extra_hours_request.payable_hours"/> horas
+                                        </div>
+                                        <div class="col-md-6">
+                                            <strong>Motivo:</strong> 
+                                            <t t-esc="extra_hours_request.reason_id.name or ''"/>
+                                        </div>
+                                    </div>
+
+                                    <div class="row mb-3">
+                                        <div class="col-12">
+                                            <strong>Justificación:</strong>
+                                            <p class="mt-2"><t t-esc="extra_hours_request.justification"/></p>
+                                        </div>
+                                    </div>
+
+                                    <t t-if="extra_hours_request.approved_by">
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <strong>Aprobado por:</strong> 
+                                                <t t-esc="extra_hours_request.approved_by.name"/>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <strong>Fecha de Aprobación:</strong> 
+                                                <t t-esc="extra_hours_request.approved_date.strftime('%Y-%m-%d %H:%M:%S') if extra_hours_request.approved_date else ''"/>
+                                            </div>
+                                        </div>
+                                    </t>
+
+                                    <t t-if="extra_hours_request.rejection_reason">
+                                        <div class="row mb-3">
+                                            <div class="col-12">
+                                                <div class="alert alert-danger">
+                                                    <strong>Motivo de Rechazo:</strong>
+                                                    <p class="mb-0"><t t-esc="extra_hours_request.rejection_reason"/></p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </t>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </template>
+
+        <!-- Template para crear nueva solicitud -->
+        <template id="portal_extra_hours_new" name="Nueva Solicitud de Horas Extra">
+            <t t-call="portal.portal_layout">
+                <t t-set="page_name" t-value="page_name"/>
+                <div class="container">
+                    <div class="row">
+                        <div class="col-12">
+                            <div class="mb-3">
+                                <a href="/my/extra-hours" class="btn btn-secondary">
+                                    <i class="fa fa-arrow-left"></i> Volver a la lista
+                                </a>
+                            </div>
+
+                            <div class="card">
+                                <div class="card-header">
+                                    <h3 class="mb-0">Nueva Solicitud de Horas Extra</h3>
+                                </div>
+                                <div class="card-body">
+                                    <t t-if="error">
+                                        <div class="alert alert-danger" role="alert">
+                                            <t t-esc="error"/>
+                                        </div>
+                                    </t>
+
+                                    <form method="post" action="/my/extra-hours/create" class="needs-validation" novalidate="">
+                                        <input type="hidden" name="csrf_token" t-att-value="request.csrf_token()"/>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label for="date" class="form-label">Fecha <span class="text-danger">*</span></label>
+                                                <input type="date" class="form-control" id="date" name="date" 
+                                                       t-att-value="today" required=""/>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="type" class="form-label">Tipo <span class="text-danger">*</span></label>
+                                                <select class="form-control" id="type" name="type" required="">
+                                                    <option value="early">Entrada Anticipada</option>
+                                                    <option value="late">Salida Tardía</option>
+                                                    <option value="both">Entrada Anticipada y Salida Tardía</option>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label for="check_in" class="form-label">Hora de Entrada <span class="text-danger">*</span></label>
+                                                <input type="datetime-local" class="form-control" id="check_in" name="check_in" required=""/>
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label for="check_out" class="form-label">Hora de Salida <span class="text-danger">*</span></label>
+                                                <input type="datetime-local" class="form-control" id="check_out" name="check_out" required=""/>
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label for="reason_id" class="form-label">Motivo <span class="text-danger">*</span></label>
+                                                <select class="form-control" id="reason_id" name="reason_id" required="">
+                                                    <option value="">Seleccione un motivo</option>
+                                                    <t t-foreach="reasons" t-as="reason">
+                                                        <option t-att-value="reason.id">
+                                                            <t t-esc="reason.name"/>
+                                                        </option>
+                                                    </t>
+                                                </select>
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-12">
+                                                <label for="justification" class="form-label">Justificación <span class="text-danger">*</span></label>
+                                                <textarea class="form-control" id="justification" name="justification" 
+                                                          rows="4" required="" placeholder="Describa detalladamente el motivo de las horas extra"></textarea>
+                                            </div>
+                                        </div>
+
+                                        <div class="d-flex gap-2">
+                                            <button type="submit" name="submit" value="draft" class="btn btn-secondary">
+                                                Guardar como Borrador
+                                            </button>
+                                            <button type="submit" name="submit" value="submit" class="btn btn-primary">
+                                                Enviar para Aprobación
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </t>
+        </template>
+
+    </data>
+</odoo>
+

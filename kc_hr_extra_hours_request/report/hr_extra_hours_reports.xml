@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- Vista pivot para reportes de horas extra -->
+        <record id="view_hr_extra_hours_request_pivot" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.pivot</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <pivot string="Análisis de Horas Extra">
+                    <field name="employee_id" type="row"/>
+                    <field name="reason_id" type="row"/>
+                    <field name="branch_id" type="row"/>
+                    <field name="type" type="col"/>
+                    <field name="state" type="col"/>
+                    <field name="duration_hours" type="measure"/>
+                    <field name="payable_hours" type="measure"/>
+                </pivot>
+            </field>
+        </record>
+
+        <!-- Vista gráfico para reportes de horas extra -->
+        <record id="view_hr_extra_hours_request_graph" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.graph</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <graph string="Gráfico de Horas Extra" type="bar">
+                    <field name="employee_id" type="row"/>
+                    <field name="duration_hours" type="measure"/>
+                </graph>
+            </field>
+        </record>
+
+        <!-- Vista gráfico por motivo -->
+        <record id="view_hr_extra_hours_request_graph_reason" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.graph.reason</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <graph string="Horas Extra por Motivo" type="pie">
+                    <field name="reason_id" type="row"/>
+                    <field name="duration_hours" type="measure"/>
+                </graph>
+            </field>
+        </record>
+
+        <!-- Vista gráfico por tipo -->
+        <record id="view_hr_extra_hours_request_graph_type" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.graph.type</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <graph string="Horas Extra por Tipo" type="bar">
+                    <field name="type" type="row"/>
+                    <field name="duration_hours" type="measure"/>
+                </graph>
+            </field>
+        </record>
+
+        <!-- Vista gráfico temporal -->
+        <record id="view_hr_extra_hours_request_graph_time" model="ir.ui.view">
+            <field name="name">hr.extra.hours.request.graph.time</field>
+            <field name="model">hr.extra.hours.request</field>
+            <field name="arch" type="xml">
+                <graph string="Evolución de Horas Extra" type="line">
+                    <field name="month" type="row"/>
+                    <field name="duration_hours" type="measure"/>
+                </graph>
+            </field>
+        </record>
+
+        <!-- Acción para reportes pivot -->
+        <record id="action_hr_extra_hours_request_pivot" model="ir.actions.act_window">
+            <field name="name">Análisis de Horas Extra</field>
+            <field name="res_model">hr.extra.hours.request</field>
+            <field name="view_mode">pivot,graph</field>
+            <field name="context">{'search_default_approved': 1}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    ¡Análisis de horas extra!
+                </p>
+                <p>
+                    Aquí puedes analizar las horas extra por empleado, motivo, tipo y período.
+                </p>
+            </field>
+        </record>
+
+        <!-- Acción para reportes gráficos -->
+        <record id="action_hr_extra_hours_request_graph" model="ir.actions.act_window">
+            <field name="name">Gráficos de Horas Extra</field>
+            <field name="res_model">hr.extra.hours.request</field>
+            <field name="view_mode">graph</field>
+            <field name="context">{'search_default_approved': 1}</field>
+        </record>
+
+        <!-- Reporte de horas extra por empleado -->
+        <record id="action_hr_extra_hours_request_employee_report" model="ir.actions.act_window">
+            <field name="name">Horas Extra por Empleado</field>
+            <field name="res_model">hr.extra.hours.request</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{'search_default_approved': 1, 'group_by': ['employee_id']}</field>
+        </record>
+
+        <!-- Reporte de horas extra por motivo -->
+        <record id="action_hr_extra_hours_request_reason_report" model="ir.actions.act_window">
+            <field name="name">Horas Extra por Motivo</field>
+            <field name="res_model">hr.extra.hours.request</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{'search_default_approved': 1, 'group_by': ['reason_id']}</field>
+        </record>
+
+        <!-- Reporte de horas extra por sucursal -->
+        <record id="action_hr_extra_hours_request_branch_report" model="ir.actions.act_window">
+            <field name="name">Horas Extra por Sucursal</field>
+            <field name="res_model">hr.extra.hours.request</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{'search_default_approved': 1, 'group_by': ['branch_id']}</field>
+        </record>
+
+    </data>
+</odoo>

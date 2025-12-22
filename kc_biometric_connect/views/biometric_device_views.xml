@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_biometric_device_form" model="ir.ui.view">
+        <field name="name">biometric.device.form</field>
+        <field name="model">biometric.device</field>
+        <field name="arch" type="xml">
+            <form string="Dispositivo Biométrico">
+                <header>
+                    <button name="test_connection" string="Probar Conexión" type="object" class="btn-primary"/>
+                    <button name="action_open_sync_wizard" string="Sincronizar Asistencias" type="object" class="btn-primary" 
+                            icon="fa-sync" help="Abrir asistente para sincronizar con opciones de filtrado"/>
+                    <button name="sync_attendance" string="Sincronización Rápida" type="object" class="btn-secondary" 
+                            help="Sincroniza solo registros nuevos desde la última sincronización (sin filtros)"/>
+                    <button name="export_attendance" string="Descargar Asistencias" type="object" class="btn-secondary" icon="fa-download"/>
+                    <button name="action_view_server_employees" string="Ver Empleados del Servidor" type="object" 
+                            class="btn-primary" icon="fa-users" invisible="connection_type == 'direct'"/>
+                    <button name="action_view_server_departments" string="Ver Departamentos" type="object" 
+                            class="btn-secondary" icon="fa-building" invisible="connection_type == 'direct'"/>
+                    <button name="action_view_server_areas" string="Ver Áreas" type="object" 
+                            class="btn-secondary" icon="fa-map-marker" invisible="connection_type == 'direct'"/>
+                    <field name="sync_status" widget="statusbar" statusbar_visible="success,error,never"/>
+                </header>
+                <sheet>
+                    <div class="oe_button_box" name="button_box">
+                        <button class="oe_stat_button" type="object" name="action_view_employees" icon="fa-users">
+                            <field name="employee_count" widget="statinfo" string="Empleados"/>
+                        </button>
+                    </div>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="connection_type"/>
+                            <field name="ip_address"/>
+                            <field name="port"/>
+                            <field name="password" password="True" 
+                                   invisible="connection_type == 'server'"/>
+                            <field name="device_id" 
+                                   invisible="connection_type == 'server'"/>
+                            <separator string="Configuración de Servidor" 
+                                      invisible="connection_type == 'direct'"/>
+                            <field name="api_username" 
+                                   invisible="connection_type == 'direct'"/>
+                            <field name="api_password" password="True" 
+                                   invisible="connection_type == 'direct'"/>
+                            <field name="auth_type" 
+                                   invisible="connection_type == 'direct'"/>
+                            <field name="api_base_path" 
+                                   invisible="connection_type == 'direct'"/>
+                            <field name="use_https" 
+                                   invisible="connection_type == 'direct'"/>
+                        </group>
+                        <group>
+                            <field name="is_active"/>
+                            <field name="auto_sync"/>
+                            <field name="sync_interval" invisible="not auto_sync"/>
+                            <field name="company_id" groups="base.group_multi_company"/>
+                            <field name="last_sync" readonly="1"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Información de Sincronización">
+                            <group>
+                                <field name="sync_error_message" nolabel="1" readonly="1" invisible="sync_status != 'error'"/>
+                            </group>
+                        </page>
+                    </notebook>
+                </sheet>
+                <chatter/>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_biometric_device_tree" model="ir.ui.view">
+        <field name="name">biometric.device.tree</field>
+        <field name="model">biometric.device</field>
+        <field name="arch" type="xml">
+            <list string="Dispositivos Biométricos">
+                <field name="name"/>
+                <field name="ip_address"/>
+                <field name="port"/>
+                <field name="is_active"/>
+                <field name="sync_status" widget="badge" decoration-success="sync_status == 'success'" decoration-danger="sync_status == 'error'"/>
+                <field name="last_sync"/>
+                <field name="employee_count"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_biometric_device_search" model="ir.ui.view">
+        <field name="name">biometric.device.search</field>
+        <field name="model">biometric.device</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Dispositivos Biométricos">
+                <field name="name"/>
+                <field name="ip_address"/>
+                <filter string="Activos" name="active" domain="[('is_active', '=', True)]"/>
+                <filter string="Con Sincronización Automática" name="auto_sync" domain="[('auto_sync', '=', True)]"/>
+                <separator/>
+                <filter string="Sincronización Exitosa" name="sync_success" domain="[('sync_status', '=', 'success')]"/>
+                <filter string="Error de Sincronización" name="sync_error" domain="[('sync_status', '=', 'error')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Estado de Sincronización" name="group_sync_status" context="{'group_by': 'sync_status'}"/>
+                    <filter string="Compañía" name="group_company" context="{'group_by': 'company_id'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_biometric_device" model="ir.actions.act_window">
+        <field name="name">Dispositivos Biométricos</field>
+        <field name="res_model">biometric.device</field>
+        <field name="view_mode">list,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Crear un nuevo dispositivo biométrico
+            </p>
+            <p>
+                Configure los dispositivos biométricos ZKTeco para sincronizar automáticamente
+                los registros de asistencia con Odoo.
+            </p>
+        </field>
+    </record>
+
+</odoo>
+

@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_biometric_attendance_tree" model="ir.ui.view">
+        <field name="name">biometric.attendance.tree</field>
+        <field name="model">biometric.attendance</field>
+        <field name="arch" type="xml">
+            <list string="Registros Biométricos">
+                <field name="device_id"/>
+                <field name="employee_id"/>
+                <field name="employee_biometric_id"/>
+                <field name="punch_time"/>
+                <field name="punch_state" widget="badge" decoration-info="punch_state == 'check_in'" decoration-success="punch_state == 'check_out'"/>
+                <field name="is_synced" widget="boolean_toggle"/>
+                <field name="attendance_id"/>
+            </list>
+        </field>
+    </record>
+
+    <record id="view_biometric_attendance_form" model="ir.ui.view">
+        <field name="name">biometric.attendance.form</field>
+        <field name="model">biometric.attendance</field>
+        <field name="arch" type="xml">
+            <form string="Registro Biométrico">
+                <header>
+                    <button name="create_attendance_record" string="Crear Registro de Asistencia" type="object" 
+                            class="btn-primary" invisible="is_synced"/>
+                </header>
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="device_id"/>
+                            <field name="employee_biometric_id"/>
+                            <field name="employee_id"/>
+                            <field name="punch_time"/>
+                            <field name="punch_state"/>
+                        </group>
+                        <group>
+                            <field name="status"/>
+                            <field name="verify_mode"/>
+                            <field name="is_synced"/>
+                            <field name="sync_date" readonly="1"/>
+                            <field name="attendance_id"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_biometric_attendance_search" model="ir.ui.view">
+        <field name="name">biometric.attendance.search</field>
+        <field name="model">biometric.attendance</field>
+        <field name="arch" type="xml">
+            <search string="Buscar Registros Biométricos">
+                <field name="employee_id"/>
+                <field name="device_id"/>
+                <field name="employee_biometric_id"/>
+                <filter string="Sincronizados" name="synced" domain="[('is_synced', '=', True)]"/>
+                <filter string="No Sincronizados" name="not_synced" domain="[('is_synced', '=', False)]"/>
+                <filter string="Entradas" name="check_in" domain="[('punch_state', '=', 'check_in')]"/>
+                <filter string="Salidas" name="check_out" domain="[('punch_state', '=', 'check_out')]"/>
+                <group expand="0" string="Agrupar por">
+                    <filter string="Dispositivo" name="group_device" context="{'group_by': 'device_id'}"/>
+                    <filter string="Empleado" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                    <filter string="Estado de Sincronización" name="group_sync" context="{'group_by': 'is_synced'}"/>
+                </group>
+            </search>
+        </field>
+    </record>
+
+    <record id="action_biometric_attendance" model="ir.actions.act_window">
+        <field name="name">Registros Biométricos</field>
+        <field name="res_model">biometric.attendance</field>
+        <field name="view_mode">list,form</field>
+        <field name="context">{'search_default_not_synced': 1}</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                No hay registros biométricos
+            </p>
+            <p>
+                Los registros se importan automáticamente desde los dispositivos biométricos
+                cuando se ejecuta la sincronización.
+            </p>
+        </field>
+    </record>
+
+    <!-- Extensión de vista de empleado -->
+    <record id="view_employee_form_biometric" model="ir.ui.view">
+        <field name="name">hr.employee.form.biometric</field>
+        <field name="model">hr.employee</field>
+        <field name="inherit_id" ref="hr.view_employee_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[field[@name='coach_id']]" position="after">
+                <group string="Configuración Biométrica" name="biometric_config">
+                    <field name="biometric_user_id"/>
+                    <field name="biometric_device_id"/>
+                    <field name="biometric_sync_active"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <!-- Extensión de vista de asistencia -->
+    <record id="view_attendance_form_biometric" model="ir.ui.view">
+        <field name="name">hr.attendance.form.biometric</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//group[@name='check_out_group']" position="inside">
+                <field name="is_biometric" invisible="1"/>
+                <separator string="Información Biométrica" invisible="not is_biometric or not check_out"/>
+                <group invisible="not is_biometric or not check_out">
+                    <field name="biometric_device_id"/>
+                    <field name="biometric_punch_time"/>
+                </group>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_attendance_tree_biometric" model="ir.ui.view">
+        <field name="name">hr.attendance.tree.biometric</field>
+        <field name="model">hr.attendance</field>
+        <field name="inherit_id" ref="hr_attendance.view_attendance_tree"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='worked_hours']" position="after">
+                <field name="is_biometric" optional="hide"/>
+                <field name="biometric_device_id" optional="hide"/>
+            </xpath>
+        </field>
+    </record>
+    
+    <!-- Acción de servidor para exportar asistencias -->
+    <record id="action_export_attendance_server" model="ir.actions.server">
+        <field name="name">Descargar Asistencias (Excel)</field>
+        <field name="model_id" ref="hr_attendance.model_hr_attendance"/>
+        <field name="binding_model_id" ref="hr_attendance.model_hr_attendance"/>
+        <field name="binding_view_types">list</field>
+        <field name="state">code</field>
+        <field name="code">
+# Obtener los registros seleccionados o usar el dominio del contexto
+if records:
+    action = records.action_export_attendance()
+else:
+    # Si no hay registros seleccionados, usar el dominio del contexto si existe
+    domain = context.get('active_domain', [])
+    if domain:
+        attendances = env['hr.attendance'].search(domain)
+        action = attendances.action_export_attendance()
+    else:
+        # Si no hay dominio, usar los últimos 30 días
+        action = env['hr.attendance'].action_export_attendance()
+        </field>
+    </record>
+</odoo>
+

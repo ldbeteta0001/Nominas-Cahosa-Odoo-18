@@ -1,0 +1,74 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- Secuencia para solicitudes de horas extra -->
+        <record id="seq_hr_extra_hours_request" model="ir.sequence">
+            <field name="name">Solicitud de Horas Extra</field>
+            <field name="code">hr.extra.hours.request</field>
+            <field name="prefix">HE-%(year)s-%(month)s-</field>
+            <field name="padding">4</field>
+            <field name="number_next">1</field>
+            <field name="number_increment">1</field>
+        </record>
+
+        <!-- Motivos de horas extra -->
+        <record id="hr_extra_hours_reason_automatic" model="hr.extra.hours.reason">
+            <field name="name">Detección Automática</field>
+            <field name="code">automatic</field>
+            <field name="sequence">1</field>
+            <field name="description">Solicitud generada automáticamente por el sistema al detectar horas fuera del horario laboral</field>
+        </record>
+
+        <record id="hr_extra_hours_reason_project" model="hr.extra.hours.reason">
+            <field name="name">Proyecto Urgente</field>
+            <field name="code">urgent_project</field>
+            <field name="sequence">10</field>
+            <field name="description">Horas extra necesarias para completar un proyecto urgente</field>
+        </record>
+
+        <record id="hr_extra_hours_reason_deadline" model="hr.extra.hours.reason">
+            <field name="name">Cumplimiento de Fecha Límite</field>
+            <field name="code">deadline</field>
+            <field name="sequence">20</field>
+            <field name="description">Horas extra para cumplir con una fecha límite importante</field>
+        </record>
+
+        <record id="hr_extra_hours_reason_emergency" model="hr.extra.hours.reason">
+            <field name="name">Emergencia</field>
+            <field name="code">emergency</field>
+            <field name="sequence">30</field>
+            <field name="description">Horas extra por situación de emergencia o imprevisto</field>
+        </record>
+
+        <record id="hr_extra_hours_reason_training" model="hr.extra.hours.reason">
+            <field name="name">Capacitación</field>
+            <field name="code">training</field>
+            <field name="sequence">40</field>
+            <field name="description">Horas extra para actividades de capacitación o formación</field>
+        </record>
+
+        <record id="hr_extra_hours_reason_meeting" model="hr.extra.hours.reason">
+            <field name="name">Reunión Importante</field>
+            <field name="code">important_meeting</field>
+            <field name="sequence">50</field>
+            <field name="description">Horas extra por reunión importante con clientes o proveedores</field>
+        </record>
+
+        <record id="hr_extra_hours_reason_other" model="hr.extra.hours.reason">
+            <field name="name">Otros</field>
+            <field name="code">other</field>
+            <field name="sequence">99</field>
+            <field name="description">Otras razones no especificadas</field>
+        </record>
+
+        <!-- Actividad de correo para aprobación -->
+        <record id="mail_activity_approve_extra_hours" model="mail.activity.type">
+            <field name="name">Aprobar Horas Extra</field>
+            <field name="summary">Solicitud de Horas Extra Pendiente</field>
+            <field name="category">default</field>
+            <field name="res_model">hr.extra.hours.request</field>
+        </record>
+
+    </data>
+</odoo>

@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Extensión de la vista de formulario de asistencia -->
+        <record id="view_attendance_form_inherit_extra_hours" model="ir.ui.view">
+            <field name="name">hr.attendance.form.inherit.extra.hours</field>
+            <field name="model">hr.attendance</field>
+            <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
+            <field name="arch" type="xml">
+                <!-- Agregar botón para recalcular horas -->
+                <xpath expr="//sheet" position="before">
+                    <header>
+                        <button name="action_recalculate_hours"
+                                type="object"
+                                string="Recalcular Horas"
+                                class="oe_highlight"
+                                icon="fa-refresh"
+                                invisible="not has_extra_hours_request"/>
+                    </header>
+                </xpath>
+                
+                <!-- Agregar sección de horas calculadas después de check_out -->
+                <xpath expr="//field[@name='check_out']" position="after">
+                    <separator string="Distribución de Horas" 
+                               invisible="not has_extra_hours_request"/>
+                    <group invisible="not has_extra_hours_request" col="2">
+                        <group string="Horas Normales (100%)">
+                            <field name="hours_normal" 
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-success="hours_normal > 0"/>
+                        </group>
+                        <group string="Horas Extra">
+                            <field name="hours_25" 
+                                   string="Horas 25%"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-info="hours_25 > 0"/>
+                            <field name="hours_50" 
+                                   string="Horas 50%"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-warning="hours_50 > 0"/>
+                            <field name="hours_75" 
+                                   string="Horas 75%"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-danger="hours_75 > 0"/>
+                            <field name="total_extra_hours" 
+                                   string="Total Horas Extra"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-primary="total_extra_hours > 0"/>
+                        </group>
+                    </group>
+                    <group invisible="not has_extra_hours_request">
+                        <field name="payable_hours" 
+                               string="Horas Pagables"
+                               readonly="1"
+                               widget="float_time"
+                               decoration-success="payable_hours > 0"/>
+                    </group>
+                </xpath>
+            </field>
+        </record>
+        
+        <!-- Extensión de la vista de lista de asistencia -->
+        <record id="view_attendance_tree_inherit_extra_hours" model="ir.ui.view">
+            <field name="name">hr.attendance.tree.inherit.extra.hours</field>
+            <field name="model">hr.attendance</field>
+            <field name="inherit_id" ref="hr_attendance.view_attendance_tree"/>
+            <field name="arch" type="xml">
+                <!-- Agregar columnas de horas extra después de worked_hours -->
+                <xpath expr="//field[@name='worked_hours']" position="after">
+                    <field name="hours_normal" 
+                           string="Horas Normales" 
+                           optional="hide" 
+                           readonly="1"/>
+                    <field name="total_extra_hours" 
+                           string="Total Horas Extra" 
+                           optional="hide" 
+                           readonly="1"/>
+                    <field name="payable_hours" 
+                           string="Horas Pagables" 
+                           optional="hide" 
+                           readonly="1"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

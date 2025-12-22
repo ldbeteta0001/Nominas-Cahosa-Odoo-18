@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        
+        <!-- Vista del asistente de reportes -->
+        <record id="view_hr_extra_hours_report_wizard_form" model="ir.ui.view">
+            <field name="name">hr.extra.hours.report.wizard.form</field>
+            <field name="model">hr.extra.hours.report.wizard</field>
+            <field name="arch" type="xml">
+                <form string="Generar Reporte de Horas Extra">
+                    <group>
+                        <group name="dates">
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                        </group>
+                        <group name="filters">
+                            <field name="state"/>
+                            <field name="report_type"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group name="employees">
+                            <field name="employee_ids" widget="many2many_tags"/>
+                        </group>
+                        <group name="departments">
+                            <field name="department_ids" widget="many2many_tags"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group name="branches">
+                            <field name="branch_ids" widget="many2many_tags"/>
+                        </group>
+                    </group>
+                    <group invisible="not file_data">
+                        <field name="file_name" readonly="1"/>
+                        <field name="file_data" filename="file_name" readonly="1"/>
+                    </group>
+                    <footer>
+                        <button name="action_generate_report" string="Generar Reporte" type="object" class="btn-primary"/>
+                        <button string="Cancelar" class="btn-secondary" special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- Acción para el wizard de reportes -->
+        <record id="action_hr_extra_hours_report_wizard" model="ir.actions.act_window">
+            <field name="name">Generar Reporte de Horas Extra</field>
+            <field name="res_model">hr.extra.hours.report.wizard</field>
+            <field name="view_mode">form</field>
+            <field name="target">new</field>
+        </record>
+
+    </data>
+</odoo>
