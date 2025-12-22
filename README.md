@@ -35,7 +35,7 @@ Repositorio con módulos personalizados de Nómina y Recursos Humanos para Odoo 
 1. Copia este repositorio en la carpeta de addons de Odoo:
 ```bash
 cd /opt/odoo/addons
-git clone https://github.com/luisd.beteta10/Nominas-Cahosa-Odoo-18.git
+git clone https://github.com/ldbeteta0001/Nominas-Cahosa-Odoo-18.git
 ```
 
 2. Asegúrate de que la ruta esté en el addons_path de tu configuración de Odoo
