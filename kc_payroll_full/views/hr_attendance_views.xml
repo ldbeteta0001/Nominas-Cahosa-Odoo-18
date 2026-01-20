@@ -57,8 +57,8 @@
                     <page string="Horarios Programados" name="schedule">
                         <group>
                             <group string="Horarios según Calendario" col="2">
-                                <field name="check_in_schedule" readonly="1"/>
-                                <field name="check_out_schedule" readonly="1"/>
+                                <field name="check_in_schedule" readonly="0"/>
+                                <field name="check_out_schedule" readonly="0"/>
                             </group>
                             <group string="Diferencias" col="2">
                                 <field name="check_in_difference" 
@@ -109,6 +109,10 @@
         <field name="arch" type="xml">
             <!-- Agregar columnas de horas extra -->
             <xpath expr="//field[@name='worked_hours']" position="after">
+                <field name="is_partial" 
+                       string="Parcial" 
+                       optional="show"
+                       decoration-warning="is_partial"/>
                 <field name="hours_25" 
                        string="HE 25%" 
                        optional="show"

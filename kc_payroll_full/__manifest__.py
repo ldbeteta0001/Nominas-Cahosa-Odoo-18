@@ -29,6 +29,8 @@
         'views/hr_employee_schedule_history_views.xml',
         'views/hr_attendance_views.xml',
         'views/overtime_config_views.xml',
+        'wizard/change_schedule_wizard_views.xml',
+        'wizard/hr_attendance_import_views.xml',
     ],
     'demo': [],
     'installable': True,

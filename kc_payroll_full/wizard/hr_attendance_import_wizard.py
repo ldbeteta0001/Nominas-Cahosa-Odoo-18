@@ -233,6 +233,7 @@ class HrAttendanceImport(models.TransientModel):
     def _find_existing_partial_attendance(self, employee, work_date):
         """
         Busca asistencias parciales existentes para completar
+        (asistencias con check_in pero sin check_out)
         """
         day_start = datetime.combine(work_date, datetime.min.time())
         day_end = day_start + timedelta(days=1)
@@ -241,8 +242,7 @@ class HrAttendanceImport(models.TransientModel):
             ("employee_id", "=", employee.id),
             ("check_in", ">=", day_start.strftime("%Y-%m-%d %H:%M:%S")),
             ("check_in", "<", day_end.strftime("%Y-%m-%d %H:%M:%S")),
-            ("is_partial", "=", True),
-            ("partial_type", "=", "entry_only")
+            ("is_partial", "=", True)  # Asistencia parcial
         ], limit=1)
 
         return existing_partial
@@ -274,7 +274,7 @@ class HrAttendanceImport(models.TransientModel):
 
         _logger.info("    Buscando duplicados entre %s y %s", day_start_utc, day_end_utc)
 
-        # Buscar asistencias completas (no parciales)
+        # Buscar asistencias completas (con check_out)
         existing = self.env["hr.attendance"].search([
             ("employee_id", "=", employee.id),
             ("check_in", ">=", day_start_utc.strftime("%Y-%m-%d %H:%M:%S")),
@@ -780,9 +780,7 @@ class HrAttendanceImport(models.TransientModel):
                                         utc_tz)
                                     existing_partial.write({
                                         'check_out': dt_out_utc.strftime(
-                                            "%Y-%m-%d %H:%M:%S"),
-                                        'is_partial': False,
-                                        'partial_type': 'complete'
+                                            "%Y-%m-%d %H:%M:%S")
                                     })
                                     _logger.info(
                                         "  ✓ Asistencia parcial completada (ID: %d)",
@@ -868,9 +866,7 @@ class HrAttendanceImport(models.TransientModel):
                                         "%Y-%m-%d %H:%M:%S"),
                                     "check_out": dt_out_utc.strftime("%Y-%m-%d %H:%M:%S"),
                                     "check_in_schedule": dt_in_utc.strftime(
-                                        "%Y-%m-%d %H:%M:%S"),
-                                    "is_partial": False,
-                                    "partial_type": "complete"
+                                        "%Y-%m-%d %H:%M:%S")
                                 }
 
                                 _logger.info("  Valores finales: IN=%s, OUT=%s, SCH=%s",
@@ -929,10 +925,8 @@ class HrAttendanceImport(models.TransientModel):
                                     "check_in": real_check_in_utc.strftime(
                                         "%Y-%m-%d %H:%M:%S"),
                                     "check_in_schedule": dt_in_utc.strftime(
-                                        "%Y-%m-%d %H:%M:%S"),
-                                    "is_partial": True,
-                                    "partial_type": "entry_only"
-                                    # check_out se deja en blanco intencionalmente
+                                        "%Y-%m-%d %H:%M:%S")
+                                    # check_out se deja en blanco intencionalmente (asistencia parcial)
                                 }
 
                                 new_attendance = self.env["hr.attendance"].create(
@@ -990,9 +984,7 @@ class HrAttendanceImport(models.TransientModel):
                                         "check_in_schedule": dt_in_utc.strftime(
                                             "%Y-%m-%d %H:%M:%S"),
                                         "check_out": dt_out_utc.strftime(
-                                            "%Y-%m-%d %H:%M:%S"),
-                                        "is_partial": True,
-                                        "partial_type": "exit_only"
+                                            "%Y-%m-%d %H:%M:%S")
                                     }
 
                                     new_attendance = self.env["hr.attendance"].create(

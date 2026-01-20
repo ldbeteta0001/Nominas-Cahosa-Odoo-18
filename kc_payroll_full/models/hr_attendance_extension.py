@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from odoo import api, fields, models, _
-from odoo.exceptions import UserError
+from odoo.exceptions import UserError, ValidationError
 from datetime import datetime, timedelta, time
 import logging
 import pytz
@@ -12,6 +12,9 @@ _logger = logging.getLogger(__name__)
 class HrAttendance(models.Model):
     """Extender hr.attendance para calcular horas extra directamente"""
     _inherit = 'hr.attendance'
+
+    # Redefinir check_in para hacerlo opcional (permitir asistencias parciales con solo salida)
+    check_in = fields.Datetime(required=False)
 
     # Campos de horas extra
     hours_25 = fields.Float(
@@ -38,7 +41,6 @@ class HrAttendance(models.Model):
         store=True,
         help='Horas trabajadas en domingo (se pagan al doble)'
     )
-
     # Campos de diferencias con horario
     check_in_schedule = fields.Datetime(
         string='Entrada según Horario',
@@ -62,7 +64,6 @@ class HrAttendance(models.Model):
         help='Diferencia en horas entre salida real y salida programada. '
              'Positivo = salida tardía'
     )
-
     # Campos para entrada temprana como horas extra
     count_early_check_in_overtime = fields.Boolean(
         string="Contar Entrada Temprana como HE",
@@ -92,6 +93,20 @@ class HrAttendance(models.Model):
         compute='_compute_is_night_shift',
         store=True
     )
+    is_partial = fields.Boolean(
+        string='Es Asistencia Parcial',
+        compute='_compute_is_partial',
+        store=True,
+        help='Indica si la asistencia es parcial (solo entrada sin salida, o solo salida sin entrada)'
+    )
+    partial_type = fields.Selection([
+        ('entry_only', 'Solo Entrada'),
+        ('exit_only', 'Solo Salida'),
+    ], string='Tipo de Asistencia Parcial',
+        compute='_compute_partial_type',
+        store=True,
+        help='Tipo de asistencia parcial: solo entrada o solo salida'
+    )
 
     @api.depends('check_in')
     def _compute_is_sunday(self):
@@ -116,6 +131,61 @@ class HrAttendance(models.Model):
                 record.is_night_shift = record.employee_id.resource_calendar_id.nocturna
             else:
                 record.is_night_shift = False
+
+    @api.depends('check_in', 'check_out')
+    def _compute_is_partial(self):
+        for record in self:
+            # Asistencia parcial: falta check_in o falta check_out
+            record.is_partial = not bool(record.check_in) or not bool(record.check_out)
+    
+    @api.depends('check_in', 'check_out')
+    def _compute_partial_type(self):
+        for record in self:
+            if not record.check_in and record.check_out:
+                record.partial_type = 'exit_only'
+            elif record.check_in and not record.check_out:
+                record.partial_type = 'entry_only'
+            else:
+                record.partial_type = False
+    
+    @api.constrains('check_in', 'check_out')
+    def _check_partial_attendance(self):
+        """Validar que al menos uno de los dos campos (check_in o check_out) esté presente"""
+        for record in self:
+            if not record.check_in and not record.check_out:
+                raise ValidationError(
+                    _('Una asistencia debe tener al menos una entrada (check_in) o una salida (check_out).')
+                )
+
+    @api.model
+    def create(self, vals):
+        """Sobrescribir create para permitir asistencias parciales con solo salida"""
+        # Si estamos creando una asistencia solo con check_out (sin check_in),
+        # necesitamos saltar la validación del modelo base que busca asistencias abiertas
+        if not vals.get('check_in') and vals.get('check_out'):
+            # Es una asistencia parcial con solo salida
+            # El modelo base verifica si hay una asistencia abierta antes de crear
+            # Como esta es solo una salida (no un nuevo check_in), debemos permitirla
+            # Usamos _create directamente para saltar la validación del create
+            # _create es un método de clase que acepta una lista de diccionarios
+            model = self.env['hr.attendance'].sudo()
+            recordset = model.browse()
+            recordset = recordset._create([vals])
+            return recordset[0] if recordset else None
+        
+        # Para asistencias con check_in, usar la validación normal
+        return super(HrAttendance, self).create(vals)
+    
+    def _check_validity_check_in_check_out(self):
+        """Sobrescribir validación para permitir asistencias parciales con solo salida"""
+        # Separar asistencias con solo salida de las que tienen check_in
+        attendances_with_exit_only = self.filtered(lambda a: not a.check_in and a.check_out)
+        attendances_with_check_in = self - attendances_with_exit_only
+        
+        # Para asistencias con solo salida, no aplicar la validación del modelo base
+        # Para asistencias con check_in, usar la validación normal del modelo base
+        if attendances_with_check_in:
+            super(HrAttendance, attendances_with_check_in)._check_validity_check_in_check_out()
 
     @api.depends('check_in', 'check_out', 'check_in_schedule', 'check_out_schedule')
     def _compute_schedule_differences(self):
@@ -221,7 +291,7 @@ class HrAttendance(models.Model):
         if not calendar:
             _logger.warning("_get_expected_schedule: empleado %s no tiene calendario", employee.name)
             return None
-        
+
         # Convertir check_in a zona horaria local
         user_tz = pytz.timezone(self.env.user.tz or 'UTC')
         check_in_utc = self.check_in.replace(tzinfo=pytz.UTC)
@@ -240,6 +310,38 @@ class HrAttendance(models.Model):
         # Guardar el weekday original para casos especiales (sábado/domingo)
         original_weekday = weekday
         _logger.info("_get_expected_schedule: Encontradas %d líneas de horario para weekday %s", len(attendances), weekday)
+        
+        # Si es domingo y es turno nocturno, no hay horario programado
+        # (todas las horas son horas de domingo, se pagan al doble)
+        if weekday == 6 and calendar.nocturna:
+            _logger.info("_get_expected_schedule: Domingo, turno nocturno - todas las horas son horas de domingo, no hay horario programado")
+            return None
+        
+        # Si es sábado sin horario y es turno nocturno, usar horario estándar
+        # (18:00 entrada del sábado, 06:00 salida del domingo)
+        if not attendances and weekday == 5 and calendar.nocturna:
+            _logger.info("_get_expected_schedule: Sábado sin horario, turno nocturno - usando horario estándar (18:00-06:00)")
+            # Usar horario estándar para turnos nocturnos de sábado
+            check_in_schedule_date = check_in_local.date()
+            check_out_schedule_date = check_in_schedule_date + timedelta(days=1)
+            
+            # Entrada: 18:00 del sábado
+            check_in_time = time(18, 0)
+            check_in_schedule_local = datetime.combine(check_in_schedule_date, check_in_time)
+            check_in_schedule_utc = user_tz.localize(check_in_schedule_local).astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            # Salida: 06:00 del domingo
+            check_out_time = time(6, 0)
+            check_out_schedule_local = datetime.combine(check_out_schedule_date, check_out_time)
+            check_out_schedule_utc = user_tz.localize(check_out_schedule_local).astimezone(pytz.UTC).replace(tzinfo=None)
+            
+            _logger.info("_get_expected_schedule: Horario estándar calculado - Entrada: %s (local: %s), Salida: %s (local: %s)",
+                        check_in_schedule_utc, check_in_schedule_local, check_out_schedule_utc, check_out_schedule_local)
+            
+            return {
+                'check_in': check_in_schedule_utc,
+                'check_out': check_out_schedule_utc
+            }
         
         if not attendances:
             # Si no hay horario para este día, buscar el más cercano
@@ -330,26 +432,99 @@ class HrAttendance(models.Model):
                         if att.hour_to >= 24.0 or (att.hour_to < att.hour_from and att.hour_from >= 16.0):
                             evening_line = att
                             break
+                # Si aún no encontramos, buscar cualquier línea que empiece después de las 12:00 (mediodía)
+                if not evening_line:
+                    for att in sorted_atts:
+                        if att.hour_from >= 12.0:
+                            evening_line = att
+                            break
                 # Si aún no encontramos, buscar cualquier línea que empiece después de las 16:00
                 if not evening_line:
                     for att in sorted_atts:
                         if att.hour_from >= 16.0:
                             evening_line = att
                             break
-                # Si no encontramos línea de tarde, usar la última línea del día
+                
+                # Validación especial para sábados: si encontramos una línea pero no es de tarde/noche (hour_from < 12.0),
+                # buscar en el día anterior (viernes)
+                if evening_line and original_weekday == 5 and evening_line.hour_from < 12.0:
+                    _logger.info("_get_expected_schedule: Sábado con línea de horario temprano (%s-%s), buscando en día anterior", 
+                                evening_line.hour_from, evening_line.hour_to)
+                    evening_line = None
+                
+                # Si no encontramos línea de tarde en el día actual, buscar en el día anterior
+                if not evening_line:
+                    prev_day = (original_weekday - 1) % 7
+                    prev_attendances = calendar.attendance_ids.filtered(
+                        lambda x: int(x.dayofweek) == prev_day and (x.shift_group or 'default') == group
+                    )
+                    if prev_attendances:
+                        sorted_prev = sorted(prev_attendances, key=lambda x: x.hour_from)
+                        # Buscar línea de tarde/noche en el día anterior
+                        for att in sorted_prev:
+                            if 16.0 <= att.hour_from <= 20.0:
+                                evening_line = att
+                                _logger.info("_get_expected_schedule: Encontrada línea de tarde/noche en día anterior (%s): hour_from=%s, hour_to=%s",
+                                            prev_day, att.hour_from, att.hour_to)
+                                break
+                        if not evening_line:
+                            for att in sorted_prev:
+                                if att.hour_from >= 16.0:
+                                    evening_line = att
+                                    _logger.info("_get_expected_schedule: Encontrada línea de tarde/noche en día anterior (%s): hour_from=%s, hour_to=%s",
+                                                prev_day, att.hour_from, att.hour_to)
+                                    break
+                
+                # Si aún no encontramos línea de tarde, usar la última línea del día
                 if not evening_line and sorted_atts:
                     evening_line = sorted_atts[-1]
+                    _logger.info("_get_expected_schedule: Usando última línea del día como línea de tarde/noche: hour_from=%s, hour_to=%s",
+                                evening_line.hour_from, evening_line.hour_to)
                 
                 if evening_line:
                     # Buscar línea de madrugada del día siguiente con el mismo shift_group
-                    # Si encontramos horario del día anterior (weekday != original_weekday),
-                    # buscar primero la línea de mañana del día siguiente del weekday encontrado
-                    # (ej: si weekday=viernes, buscar sábado)
-                    # Si no encontramos, buscar el día siguiente del check_in original
+                    # Siempre buscar primero en el día siguiente del check_in original
                     found_morning_line = False
                     
-                    # Primero: Si weekday != original_weekday, buscar línea de mañana del día siguiente del weekday encontrado
-                    if weekday != original_weekday:
+                    # Primero: Buscar línea de mañana del día siguiente del check_in original
+                    next_day_from_check_in = (original_weekday + 1) % 7
+                    next_attendances = calendar.attendance_ids.filtered(
+                        lambda x: int(x.dayofweek) == next_day_from_check_in and (x.shift_group or 'default') == group
+                    )
+                    
+                    if next_attendances:
+                        # Buscar línea de madrugada (00:00-06:00)
+                        morning_att = next_attendances.filtered(lambda x: x.hour_from <= 8.0)
+                        if morning_att:
+                            # Ordenar por hour_from y tomar la primera (normalmente 00:00)
+                            morning_sorted = sorted(morning_att, key=lambda x: x.hour_from)
+                            target_group = group
+                            first_attendance = evening_line
+                            last_attendance = morning_sorted[0]
+                            found_morning_line = True
+                            _logger.info("_get_expected_schedule: Encontrado grupo %s - Línea tarde: %s-%s (día %s), Línea mañana: %s-%s (día %s)",
+                                        group, evening_line.hour_from, evening_line.hour_to, int(evening_line.dayofweek),
+                                        last_attendance.hour_from, last_attendance.hour_to, int(last_attendance.dayofweek))
+                    
+                    # Si no encontramos con el mismo shift_group, buscar sin restricción de grupo
+                    if not found_morning_line:
+                        next_attendances_all = calendar.attendance_ids.filtered(
+                            lambda x: int(x.dayofweek) == next_day_from_check_in
+                        )
+                        if next_attendances_all:
+                            morning_att = next_attendances_all.filtered(lambda x: x.hour_from <= 8.0)
+                            if morning_att:
+                                morning_sorted = sorted(morning_att, key=lambda x: x.hour_from)
+                                target_group = group
+                                first_attendance = evening_line
+                                last_attendance = morning_sorted[0]
+                                found_morning_line = True
+                                _logger.info("_get_expected_schedule: Encontrado línea de mañana sin restricción de grupo - Línea tarde: %s-%s (día %s), Línea mañana: %s-%s (día %s)",
+                                            evening_line.hour_from, evening_line.hour_to, int(evening_line.dayofweek),
+                                            last_attendance.hour_from, last_attendance.hour_to, int(last_attendance.dayofweek))
+                    
+                    # Segundo: Si no encontramos y weekday != original_weekday, buscar línea de mañana del día siguiente del weekday encontrado
+                    if not found_morning_line and weekday != original_weekday:
                         next_day_from_found = (weekday + 1) % 7
                         next_attendances = calendar.attendance_ids.filtered(
                             lambda x: int(x.dayofweek) == next_day_from_found and (x.shift_group or 'default') == group
@@ -364,27 +539,6 @@ class HrAttendance(models.Model):
                                 found_morning_line = True
                                 _logger.info("_get_expected_schedule: Encontrado grupo %s (día anterior %s->%s) - Línea tarde: %s-%s, Línea mañana: %s-%s",
                                             group, weekday, next_day_from_found, evening_line.hour_from, evening_line.hour_to,
-                                            last_attendance.hour_from, last_attendance.hour_to)
-                    
-                    # Segundo: Si no encontramos, buscar línea de mañana del día siguiente del check_in original
-                    if not found_morning_line:
-                        next_day_from_check_in = (original_weekday + 1) % 7
-                        next_attendances = calendar.attendance_ids.filtered(
-                            lambda x: int(x.dayofweek) == next_day_from_check_in and (x.shift_group or 'default') == group
-                        )
-                        
-                        if next_attendances:
-                            # Buscar línea de madrugada (00:00-06:00)
-                            morning_att = next_attendances.filtered(lambda x: x.hour_from <= 8.0)
-                            if morning_att:
-                                # Ordenar por hour_from y tomar la primera (normalmente 00:00)
-                                morning_sorted = sorted(morning_att, key=lambda x: x.hour_from)
-                                target_group = group
-                                first_attendance = evening_line
-                                last_attendance = morning_sorted[0]
-                                found_morning_line = True
-                                _logger.info("_get_expected_schedule: Encontrado grupo %s - Línea tarde: %s-%s, Línea mañana: %s-%s",
-                                            group, evening_line.hour_from, evening_line.hour_to,
                                             last_attendance.hour_from, last_attendance.hour_to)
                     
                     if found_morning_line:
@@ -414,26 +568,6 @@ class HrAttendance(models.Model):
                                 break
                     if target_group:
                         break
-                    
-                    # Caso especial: Si encontramos horario del día anterior (ej: viernes cuando check_in es sábado)
-                    # y no encontramos línea de mañana del día siguiente, buscar la línea de mañana
-                    # del día siguiente del weekday encontrado (ej: sábado si weekday=viernes)
-                    if weekday != original_weekday:
-                        next_day_from_found = (weekday + 1) % 7
-                        next_attendances_from_found = calendar.attendance_ids.filtered(
-                            lambda x: int(x.dayofweek) == next_day_from_found and (x.shift_group or 'default') == group
-                        )
-                        if next_attendances_from_found:
-                            morning_att = next_attendances_from_found.filtered(lambda x: x.hour_from <= 8.0)
-                            if morning_att:
-                                morning_sorted = sorted(morning_att, key=lambda x: x.hour_from)
-                                target_group = group
-                                first_attendance = evening_line
-                                last_attendance = morning_sorted[0]
-                                _logger.info("_get_expected_schedule: Encontrado grupo %s (día anterior) - Línea tarde: %s-%s, Línea mañana: %s-%s",
-                                            group, evening_line.hour_from, evening_line.hour_to,
-                                            last_attendance.hour_from, last_attendance.hour_to)
-                                break
             
             # Si no encontramos un grupo con línea de mañana, usar el primero disponible
             if not target_group and shift_groups:
@@ -512,14 +646,32 @@ class HrAttendance(models.Model):
         check_in_date = check_in_local.date()
         check_out_date = check_in_date
 
+        # Determinar si first_attendance viene del día anterior
+        first_attendance_day = int(first_attendance.dayofweek)
+        first_attendance_from_prev_day = False
+        if calendar.nocturna and first_attendance_day != original_weekday:
+            # Si el día de first_attendance es diferente al día de check_in, verificar si es el día anterior
+            expected_prev_day = (original_weekday - 1) % 7
+            if first_attendance_day == expected_prev_day:
+                first_attendance_from_prev_day = True
+                _logger.info("_get_expected_schedule: first_attendance viene del día anterior (día %s)", first_attendance_day)
+        
+        # Calcular la fecha correcta para check_in_schedule
+        if first_attendance_from_prev_day:
+            # Si first_attendance viene del día anterior, usar la fecha del día anterior
+            check_in_schedule_date = check_in_date - timedelta(days=1)
+        else:
+            # Si first_attendance es del mismo día, usar la fecha del check_in
+            check_in_schedule_date = check_in_date
+
         # Hora de entrada esperada
         hour_from = int(first_attendance.hour_from)
         minute_from = int((first_attendance.hour_from - hour_from) * 60)
         check_in_time = time(hour_from, minute_from)
-        check_in_schedule_local = datetime.combine(check_in_date, check_in_time)
+        check_in_schedule_local = datetime.combine(check_in_schedule_date, check_in_time)
         check_in_schedule_utc = user_tz.localize(check_in_schedule_local).astimezone(pytz.UTC).replace(tzinfo=None)
-        _logger.info("_get_expected_schedule: check_in_schedule calculado: %s (local: %s)", 
-                    check_in_schedule_utc, check_in_schedule_local)
+        _logger.info("_get_expected_schedule: check_in_schedule calculado: %s (local: %s, fecha: %s)", 
+                    check_in_schedule_utc, check_in_schedule_local, check_in_schedule_date)
 
         # Hora de salida esperada
         hour_to_float = last_attendance.hour_to
@@ -541,22 +693,36 @@ class HrAttendance(models.Model):
                 elif last_attendance_day in [(original_weekday + i) % 7 for i in range(1, 4)]:
                     last_attendance_from_next_day = True
         
+        # Calcular la fecha correcta para check_out_schedule
+        # Si last_attendance viene del día siguiente, usar la fecha del día siguiente
+        if last_attendance_from_next_day:
+            # Calcular cuántos días adelante está last_attendance
+            if last_attendance_day > original_weekday:
+                days_ahead = last_attendance_day - original_weekday
+            elif last_attendance_day < original_weekday:
+                # Caso especial: domingo (6) después de sábado (5) = 1 día adelante
+                days_ahead = (7 - original_weekday) + last_attendance_day
+            else:
+                days_ahead = 0
+            check_out_schedule_date = check_in_date + timedelta(days=days_ahead)
+            _logger.info("_get_expected_schedule: last_attendance viene del día siguiente (día %s, %d días adelante)", 
+                        last_attendance_day, days_ahead)
+        else:
+            check_out_schedule_date = check_in_date
+        
         # Si hour_to es 24 o mayor, es medianoche del día siguiente
         if hour_to_float >= 24.0:
             hour_to = 0
             minute_to = int((hour_to_float - 24.0) * 60)
-            check_out_date = check_in_date + timedelta(days=1)
+            # Si no habíamos ajustado la fecha, ajustarla ahora
+            if not last_attendance_from_next_day:
+                check_out_schedule_date = check_in_date + timedelta(days=1)
         else:
             hour_to = int(hour_to_float)
             minute_to = int((hour_to_float - hour_to) * 60)
-            # Si last_attendance viene del día siguiente, check_out_date debe ser del día siguiente
-            if last_attendance_from_next_day:
-                check_out_date = check_in_date + timedelta(days=1)
             # Si hour_to < hour_from, es un turno que cruza medianoche
-            elif hour_to < hour_from or (hour_to == hour_from and minute_to < minute_from):
-                check_out_date = check_in_date + timedelta(days=1)
-        else:
-                check_out_date = check_in_date
+            if not last_attendance_from_next_day and (hour_to < hour_from or (hour_to == hour_from and minute_to < minute_from)):
+                check_out_schedule_date = check_in_date + timedelta(days=1)
 
         # Validar que hour_to esté en rango válido (0-23)
         if hour_to < 0:
@@ -566,10 +732,10 @@ class HrAttendance(models.Model):
             minute_to = 59
 
         check_out_time = time(hour_to, minute_to)
-        check_out_schedule_local = datetime.combine(check_out_date, check_out_time)
+        check_out_schedule_local = datetime.combine(check_out_schedule_date, check_out_time)
         check_out_schedule_utc = user_tz.localize(check_out_schedule_local).astimezone(pytz.UTC).replace(tzinfo=None)
         _logger.info("_get_expected_schedule: check_out_schedule calculado: %s (local: %s, fecha: %s)", 
-                    check_out_schedule_utc, check_out_schedule_local, check_out_date)
+                    check_out_schedule_utc, check_out_schedule_local, check_out_schedule_date)
         
         return {
             'check_in': check_in_schedule_utc,
@@ -603,14 +769,16 @@ class HrAttendance(models.Model):
                 continue
 
             # Si es domingo, calcular horas de domingo
+            # Para turnos nocturnos que cruzan de domingo a lunes, todas las horas son horas de domingo
             if record.is_sunday:
                 delta = record.check_out - record.check_in
                 record.sunday_hours = delta.total_seconds() / 3600.0
-                _logger.info("_compute_overtime_hours: Es domingo, horas domingo: %.2f", record.sunday_hours)
-                # Las horas de domingo no se cuentan en HE25
+                _logger.info("_compute_overtime_hours: Es domingo, horas domingo: %.2f (incluye horas hasta lunes si es turno nocturno)", record.sunday_hours)
+                # Las horas de domingo no se cuentan en HE25, HE50, HE75
+                # Se pagan al doble
                 continue
 
-            # Si es sábado sin horario configurado, todo es HE25
+            # Si es sábado sin horario configurado o con horario incompleto
             if record.is_saturday:
                 calendar = record.employee_id.resource_calendar_id
                 if calendar:
@@ -618,11 +786,67 @@ class HrAttendance(models.Model):
                     saturday_attendances = calendar.attendance_ids.filtered(
                         lambda x: int(x.dayofweek) == weekday
                     )
+                    
+                    # Si es turno nocturno, verificar que tenga la segunda línea del domingo
+                    if record.is_night_shift and saturday_attendances:
+                        # Buscar segunda línea del domingo (dayofweek 6)
+                        next_day = (weekday + 1) % 7  # Domingo = 6
+                        sunday_attendances = calendar.attendance_ids.filtered(
+                            lambda x: int(x.dayofweek) == next_day
+                        )
+                        # Verificar que haya una línea del domingo que empiece temprano (00:00-08:00)
+                        has_sunday_line = False
+                        for att in sunday_attendances:
+                            if att.hour_from <= 8.0:
+                                # Verificar que tenga el mismo shift_group
+                                sat_group = saturday_attendances[0].shift_group or 'default'
+                                sun_group = att.shift_group or 'default'
+                                if sat_group == sun_group:
+                                    has_sunday_line = True
+                                    break
+                        
+                        if not has_sunday_line:
+                            # No hay segunda línea válida, tratar como sábado sin horario
+                            _logger.warning("_compute_overtime_hours: Sábado con turno nocturno pero sin segunda línea del domingo válida")
+                            saturday_attendances = False
+                    
                     if not saturday_attendances:
-                        # No hay horario para sábado, todo es HE25
+                        # No hay horario para sábado o es incompleto
                         delta = record.check_out - record.check_in
-                        record.hours_25 = delta.total_seconds() / 3600.0
-                        _logger.info("_compute_overtime_hours: Sábado sin horario, todo HE25: %.2f", record.hours_25)
+                        worked_hours = delta.total_seconds() / 3600.0
+                        
+                        # Si es turno nocturno, calcular por rangos:
+                        # De 18:00 a 00:00 = horas normales (no extra)
+                        # De 00:00 a 06:00 = HE75%
+                        if record.is_night_shift:
+                            user_tz = pytz.timezone(self.env.user.tz or 'UTC')
+                            check_in_utc = record.check_in.replace(tzinfo=pytz.UTC)
+                            check_in_local = check_in_utc.astimezone(user_tz)
+                            check_out_utc = record.check_out.replace(tzinfo=pytz.UTC)
+                            check_out_local = check_out_utc.astimezone(user_tz)
+                            
+                            # Calcular horas desde medianoche (00:00 del domingo) hasta 06:00 como HE75
+                            next_day_date = check_in_local.date() + timedelta(days=1)
+                            midnight = user_tz.localize(datetime.combine(next_day_date, time(0, 0)))
+                            he75_end = user_tz.localize(datetime.combine(next_day_date, time(6, 0)))
+                            
+                            # Horas HE75 (00:00 a 06:00)
+                            if check_out_local >= midnight:
+                                start_he75 = max(midnight, check_in_local)
+                                end_he75 = min(he75_end, check_out_local)
+                                if end_he75 > start_he75:
+                                    he75_delta = end_he75 - start_he75
+                                    record.hours_75 = he75_delta.total_seconds() / 3600.0
+                                    _logger.info("_compute_overtime_hours: Sábado nocturno sin horario - HE75 (00:00-06:00): %.2f", record.hours_75)
+                            
+                            # Las horas de 18:00 a 00:00 son normales (no se cuentan como extra)
+                            # Por eso no las agregamos a hours_25, hours_50 o hours_75
+                            _logger.info("_compute_overtime_hours: Sábado sin horario, turno nocturno - HE75: %.2f (horas 18:00-00:00 son normales)", 
+                                        record.hours_75)
+                        else:
+                            # Si es turno diurno, todo es HE25
+                            record.hours_25 = worked_hours
+                            _logger.info("_compute_overtime_hours: Sábado sin horario, turno diurno, todo HE25: %.2f", record.hours_25)
                         continue
 
             # Calcular horas trabajadas
@@ -652,7 +876,7 @@ class HrAttendance(models.Model):
                 calendar = record.employee_id.resource_calendar_id
                 if not calendar:
                     continue
-
+                
                 weekday = check_in_local.weekday()
                 original_weekday = weekday
                 attendances = calendar.attendance_ids.filtered(
@@ -764,7 +988,27 @@ class HrAttendance(models.Model):
                                         att.dayofweek, att.hour_from, att.hour_to)
                             break
                     
-                    # Si hay segunda línea, calcular HE75 desde su hour_from hasta su hour_to
+                    # Si no encontramos en el grupo, buscar directamente en el calendario
+                    if not second_line:
+                        _logger.info("_compute_overtime_hours: No se encontró segunda línea en el grupo, buscando en calendario completo")
+                        next_day_attendances = calendar.attendance_ids.filtered(
+                            lambda x: int(x.dayofweek) == next_day
+                        )
+                        for att in next_day_attendances:
+                            # Verificar que tenga el mismo shift_group
+                            att_group = att.shift_group or 'default'
+                            if att_group == target_group and att.hour_from <= 8.0:
+                                second_line = att
+                                _logger.info("_compute_overtime_hours: Segunda línea encontrada en calendario: dayofweek=%s, hour_from=%s, hour_to=%s, shift_group=%s",
+                                            att.dayofweek, att.hour_from, att.hour_to, att_group)
+                                break
+                    
+                    # Para turnos nocturnos, calcular HE75 desde medianoche (00:00) hasta 06:00 del día siguiente
+                    # REGLA: 18:00-00:00 = horas normales, 00:00-06:00 = HE75%
+                    next_day_date = check_in_local.date() + timedelta(days=1)
+                    midnight = user_tz.localize(datetime.combine(next_day_date, time(0, 0)))
+                    
+                    # Determinar rango HE75: usar segunda línea si existe, sino usar estándar 00:00-06:00
                     if second_line:
                         _logger.info("_compute_overtime_hours: Segunda línea encontrada - hour_from: %s, hour_to: %s",
                                     second_line.hour_from, second_line.hour_to)
@@ -780,32 +1024,38 @@ class HrAttendance(models.Model):
                         else:
                             he75_end_hour = int(he75_end_hour_float)
                             he75_end_minute = int((he75_end_hour_float - he75_end_hour) * 60)
-
-                        # Calcular horas trabajadas en el rango HE75
-                        next_day = check_in_local.date() + timedelta(days=1)
-                        he75_start_time = user_tz.localize(datetime.combine(next_day, time(he75_start_hour, he75_start_minute)))
-                        he75_end_time = user_tz.localize(datetime.combine(next_day, time(he75_end_hour, he75_end_minute)))
-                        _logger.info("_compute_overtime_hours: Rango HE75 - inicio: %s, fin: %s", 
+                        
+                        he75_start_time = user_tz.localize(datetime.combine(next_day_date, time(he75_start_hour, he75_start_minute)))
+                        he75_end_time = user_tz.localize(datetime.combine(next_day_date, time(he75_end_hour, he75_end_minute)))
+                        _logger.info("_compute_overtime_hours: Rango HE75 desde segunda línea - inicio: %s, fin: %s", 
                                     he75_start_time, he75_end_time)
-
-                        # Si el check_out está dentro del rango HE75
-                        if check_out_local >= he75_start_time:
-                            start_he75 = max(he75_start_time, check_in_local)
-                            end_he75 = min(he75_end_time, check_out_local)
-                            if end_he75 > start_he75:
-                                he75_delta = end_he75 - start_he75
-                                record.hours_75 = he75_delta.total_seconds() / 3600.0
-                                _logger.info("_compute_overtime_hours: HE75 calculado antes de restar diferencia: %.2f", record.hours_75)
-
-                                # Restar check_in_difference de HE75 si es positivo (llegada tardía)
-                                if record.check_in_difference > 0:
-                                    record.hours_75 = max(0.0, record.hours_75 - record.check_in_difference)
-                                    _logger.info("_compute_overtime_hours: HE75 después de restar diferencia entrada (%.2f): %.2f",
-                                                record.check_in_difference, record.hours_75)
-                        else:
-                            _logger.info("_compute_overtime_hours: check_out (%s) no está en rango HE75", check_out_local)
                     else:
-                        _logger.warning("_compute_overtime_hours: No se encontró segunda línea para turno nocturno")
+                        _logger.info("_compute_overtime_hours: No se encontró segunda línea, usando rango estándar 00:00-06:00")
+                        # Rango estándar: 00:00 a 06:00
+                        he75_start_time = midnight
+                        he75_end_time = user_tz.localize(datetime.combine(next_day_date, time(6, 0)))
+                        _logger.info("_compute_overtime_hours: Rango HE75 estándar - inicio: %s, fin: %s", 
+                                    he75_start_time, he75_end_time)
+                    
+                    # Calcular horas HE75: desde medianoche (o inicio del rango) hasta min(06:00, check_out)
+                    # Solo si el turno cruza medianoche (check_out está después de medianoche)
+                    if check_out_local >= midnight:
+                        start_he75 = max(he75_start_time, midnight, check_in_local)
+                        end_he75 = min(he75_end_time, check_out_local)
+                        if end_he75 > start_he75:
+                            he75_delta = end_he75 - start_he75
+                            record.hours_75 = he75_delta.total_seconds() / 3600.0
+                            _logger.info("_compute_overtime_hours: HE75 calculado (turno nocturno cruza medianoche): %.2f horas", record.hours_75)
+                            
+                            # Restar check_in_difference de HE75 si es positivo (llegada tardía)
+                            if record.check_in_difference > 0:
+                                record.hours_75 = max(0.0, record.hours_75 - record.check_in_difference)
+                                _logger.info("_compute_overtime_hours: HE75 después de restar diferencia entrada (%.2f): %.2f",
+                                            record.check_in_difference, record.hours_75)
+                        else:
+                            _logger.info("_compute_overtime_hours: No hay horas HE75 (end_he75 <= start_he75)")
+                    else:
+                        _logger.info("_compute_overtime_hours: Turno nocturno no cruza medianoche, no hay HE75")
 
                 record.hours_25 = 0.0
                 record.hours_50 = 0.0
@@ -910,7 +1160,7 @@ class HrAttendance(models.Model):
             else:
                 # Por defecto, HE25
                 hours_25 = extra_hours
-                else:
+        else:
             # Si no hay check_out, todo como HE25
             hours_25 = extra_hours
         

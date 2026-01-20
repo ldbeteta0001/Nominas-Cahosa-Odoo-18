@@ -29,10 +29,10 @@ class HrPayslip(models.Model):
         # Obtener asistencias del período
         if self.date_from and self.date_to:
             attendances = self.env['hr.attendance'].search([
-                ('employee_id', '=', self.employee_id.id),
-                ('check_in', '>=', self.date_from),
+            ('employee_id', '=', self.employee_id.id),
+            ('check_in', '>=', self.date_from),
                 ('check_in', '<=', self.date_to),
-            ])
+        ])
         else:
             attendances = self.env['hr.attendance'].browse([])
 
@@ -167,7 +167,7 @@ class HrPayslip(models.Model):
         
         if total_worked_hours <= 0:
             return res
-        
+
         # Calcular el máximo de horas normales permitidas en el período
         if self.date_from and self.date_to:
             days_diff = (self.date_to - self.date_from).days + 1
@@ -240,6 +240,6 @@ class HrPayslip(models.Model):
                     "Agregadas %.2f horas extra (HE25) para empleado %s",
                     excess_hours, self.employee_id.name
                 )
-        
+
         return res
 

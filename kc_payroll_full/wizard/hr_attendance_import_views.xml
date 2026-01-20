@@ -9,6 +9,7 @@
           <group>
             <field name="file_data" filename="file_name" widget="binary"/>
             <field name="file_name"/>
+            <field name="allow_partial_attendance"/>
           </group>
           <footer>
             <button string="Importar" type="object" name="action_import" class="btn-primary"/>
