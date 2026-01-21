@@ -890,6 +890,30 @@ class HrAttendanceImport(models.TransientModel):
                                 ).create(attendance_vals)
                                 _logger.info("  ✓ Asistencia completa creada (ID: %d)",
                                              new_attendance.id)
+                                
+                                # Calcular horas extra automáticamente después de crear la asistencia
+                                try:
+                                    result = new_attendance._calculate_extra_hours_only()
+                                    if result and result.get('total', 0) > 0:
+                                        # Guardar valores calculados en campos almacenados (sin crear solicitud)
+                                        new_attendance.write({
+                                            'hours_25_stored': result.get('hours_25', 0.0),
+                                            'hours_50_stored': result.get('hours_50', 0.0),
+                                            'hours_75_stored': result.get('hours_75', 0.0),
+                                            'hours_100_stored': result.get('hours_100', 0.0),
+                                        })
+                                        _logger.info("  ✓ Horas extra calculadas y guardadas para asistencia ID: %d (25%%=%.2f, 50%%=%.2f, 75%%=%.2f, 100%%=%.2f)", 
+                                                   new_attendance.id, 
+                                                   result.get('hours_25', 0.0),
+                                                   result.get('hours_50', 0.0),
+                                                   result.get('hours_75', 0.0),
+                                                   result.get('hours_100', 0.0))
+                                    else:
+                                        _logger.info("  → No se detectaron horas extra para asistencia ID: %d", new_attendance.id)
+                                except Exception as e:
+                                    _logger.warning("  ⚠ No se pudieron calcular horas extra para asistencia ID: %d - %s", 
+                                                   new_attendance.id, str(e))
+                                
                                 imported_count += 1
 
                             except Exception as e:

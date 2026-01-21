@@ -31,12 +31,12 @@
                     </header>
                 </xpath>
                 
-                <!-- Agregar sección de horas calculadas después de check_out -->
+                <!-- Agregar sección de horas calculadas después del notebook -->
                 <!-- Esta sección se carga al final, después de información biométrica si existe -->
-                <!-- Buscar después del separador biométrico si existe, o después de check_out -->
-                <xpath expr="//separator[@string='Información Biométrica']/following-sibling::group[1] | //field[@name='check_out']" position="after">
-                    <separator string="Distribución de Horas" invisible="not hours_normal and not total_extra_hours"/>
-                    <group col="2" invisible="not hours_normal and not total_extra_hours">
+                <!-- Buscar después del notebook que contiene las pestañas -->
+                <xpath expr="//notebook" position="after">
+                    <separator string="Distribución de Horas"/>
+                    <group col="2">
                         <group string="Horas Normales (100%)">
                             <field name="hours_normal" 
                                    string="Horas Normales"
@@ -72,52 +72,7 @@
                                    decoration-primary="total_extra_hours > 0"/>
                         </group>
                     </group>
-                    <group string="Resumen" invisible="not payable_hours">
-                        <field name="payable_hours" 
-                               string="Horas Pagables"
-                               readonly="1"
-                               widget="float_time"
-                               decoration-success="payable_hours > 0"/>
-                    </group>
-                </xpath>
-                    <separator string="Distribución de Horas" invisible="not hours_normal and not total_extra_hours"/>
-                    <group col="2" invisible="not hours_normal and not total_extra_hours">
-                        <group string="Horas Normales (100%)">
-                            <field name="hours_normal" 
-                                   string="Horas Normales"
-                                   readonly="1"
-                                   widget="float_time"
-                                   decoration-success="hours_normal > 0"/>
-                        </group>
-                        <group string="Horas Extra">
-                            <field name="hours_25" 
-                                   string="Horas 25%"
-                                   readonly="1"
-                                   widget="float_time"
-                                   decoration-info="hours_25 > 0"/>
-                            <field name="hours_50" 
-                                   string="Horas 50%"
-                                   readonly="1"
-                                   widget="float_time"
-                                   decoration-warning="hours_50 > 0"/>
-                            <field name="hours_75" 
-                                   string="Horas 75%"
-                                   readonly="1"
-                                   widget="float_time"
-                                   decoration-danger="hours_75 > 0"/>
-                            <field name="hours_100" 
-                                   string="Horas Domingo (100%)"
-                                   readonly="1"
-                                   widget="float_time"
-                                   decoration-primary="hours_100 > 0"/>
-                            <field name="total_extra_hours" 
-                                   string="Total Horas Extra"
-                                   readonly="1"
-                                   widget="float_time"
-                                   decoration-primary="total_extra_hours > 0"/>
-                        </group>
-                    </group>
-                    <group string="Resumen" invisible="not payable_hours">
+                    <group string="Resumen">
                         <field name="payable_hours" 
                                string="Horas Pagables"
                                readonly="1"
@@ -139,15 +94,44 @@
                     <field name="hours_normal" 
                            string="Horas Normales" 
                            optional="hide" 
-                           readonly="1"/>
+                           readonly="1"
+                           widget="float_time"/>
+                    <field name="hours_25" 
+                           string="Horas 25%" 
+                           optional="hide" 
+                           readonly="1"
+                           widget="float_time"
+                           decoration-info="hours_25 > 0"/>
+                    <field name="hours_50" 
+                           string="Horas 50%" 
+                           optional="hide" 
+                           readonly="1"
+                           widget="float_time"
+                           decoration-warning="hours_50 > 0"/>
+                    <field name="hours_75" 
+                           string="Horas 75%" 
+                           optional="hide" 
+                           readonly="1"
+                           widget="float_time"
+                           decoration-danger="hours_75 > 0"/>
+                    <field name="hours_100" 
+                           string="Horas 100%" 
+                           optional="hide" 
+                           readonly="1"
+                           widget="float_time"
+                           decoration-primary="hours_100 > 0"/>
                     <field name="total_extra_hours" 
                            string="Total Horas Extra" 
-                           optional="hide" 
-                           readonly="1"/>
+                           optional="show" 
+                           readonly="1"
+                           widget="float_time"
+                           decoration-primary="total_extra_hours > 0"/>
                     <field name="payable_hours" 
                            string="Horas Pagables" 
                            optional="hide" 
-                           readonly="1"/>
+                           readonly="1"
+                           widget="float_time"
+                           decoration-success="payable_hours > 0"/>
                 </xpath>
             </field>
         </record>

@@ -107,14 +107,18 @@
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
         <field name="arch" type="xml">
-            <!-- Agregar información biométrica después de check_out, antes de la sección de horas extra -->
+            <!-- Agregar notebook con información biométrica después de check_out -->
+            <!-- Este módulo se carga antes que kc_payroll_full, así que crea el notebook primero -->
             <xpath expr="//field[@name='check_out']" position="after">
                 <field name="is_biometric" invisible="1"/>
-                <separator string="Información Biométrica" invisible="not is_biometric"/>
-                <group invisible="not is_biometric" col="2">
-                    <field name="biometric_device_id"/>
-                    <field name="biometric_punch_time"/>
-                </group>
+                <notebook>
+                    <page string="Información Biométrica" invisible="not is_biometric">
+                        <group col="2">
+                            <field name="biometric_device_id"/>
+                            <field name="biometric_punch_time"/>
+                        </group>
+                    </page>
+                </notebook>
             </xpath>
         </field>
     </record>

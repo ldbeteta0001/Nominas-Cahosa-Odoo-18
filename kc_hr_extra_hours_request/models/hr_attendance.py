@@ -35,10 +35,35 @@ class HrAttendance(models.Model):
         help='Solicitud de horas extra asociada a esta asistencia'
     )
     
-    # Campos relacionados desde la solicitud de horas extra
+    # Campos almacenados para horas extra calculadas
+    hours_25_stored = fields.Float(
+        string='Horas 25% (Almacenadas)',
+        default=0.0,
+        help='Horas extra con recargo del 25% calculadas y almacenadas'
+    )
+    
+    hours_50_stored = fields.Float(
+        string='Horas 50% (Almacenadas)',
+        default=0.0,
+        help='Horas extra con recargo del 50% calculadas y almacenadas'
+    )
+    
+    hours_75_stored = fields.Float(
+        string='Horas 75% (Almacenadas)',
+        default=0.0,
+        help='Horas extra con recargo del 75% calculadas y almacenadas'
+    )
+    
+    hours_100_stored = fields.Float(
+        string='Horas 100% (Almacenadas)',
+        default=0.0,
+        help='Horas extra con recargo del 100% calculadas y almacenadas'
+    )
+    
+    # Campos computados que muestran horas desde solicitud o desde valores almacenados
     hours_normal = fields.Float(
         string='Horas Normales',
-        related='extra_hours_request.hours_normal',
+        compute='_compute_hours_fields',
         readonly=True,
         store=False,
         help='Horas trabajadas en horario normal'
@@ -46,7 +71,7 @@ class HrAttendance(models.Model):
     
     hours_25 = fields.Float(
         string='Horas 25%',
-        related='extra_hours_request.hours_25',
+        compute='_compute_hours_fields',
         readonly=True,
         store=False,
         help='Horas extra con recargo del 25%'
@@ -54,7 +79,7 @@ class HrAttendance(models.Model):
     
     hours_50 = fields.Float(
         string='Horas 50%',
-        related='extra_hours_request.hours_50',
+        compute='_compute_hours_fields',
         readonly=True,
         store=False,
         help='Horas extra con recargo del 50%'
@@ -62,7 +87,7 @@ class HrAttendance(models.Model):
     
     hours_75 = fields.Float(
         string='Horas 75%',
-        related='extra_hours_request.hours_75',
+        compute='_compute_hours_fields',
         readonly=True,
         store=False,
         help='Horas extra con recargo del 75%'
@@ -70,7 +95,7 @@ class HrAttendance(models.Model):
     
     hours_100 = fields.Float(
         string='Horas Domingo (100%)',
-        related='extra_hours_request.hours_100',
+        compute='_compute_hours_fields',
         readonly=True,
         store=False,
         help='Horas extra con recargo del 100% (domingos)'
@@ -78,7 +103,7 @@ class HrAttendance(models.Model):
     
     payable_hours = fields.Float(
         string='Horas Pagables',
-        related='extra_hours_request.payable_hours',
+        compute='_compute_hours_fields',
         readonly=True,
         store=False,
         help='Horas que serán pagadas'
@@ -128,6 +153,35 @@ class HrAttendance(models.Model):
         """Obtener el primer registro de la solicitud de horas extra"""
         for attendance in self:
             attendance.extra_hours_request = attendance.extra_hours_request_id[:1] if attendance.extra_hours_request_id else False
+    
+    @api.depends('extra_hours_request_id', 'hours_25_stored', 'hours_50_stored', 'hours_75_stored', 'hours_100_stored',
+                 'extra_hours_request.hours_25', 'extra_hours_request.hours_50', 
+                 'extra_hours_request.hours_75', 'extra_hours_request.hours_100',
+                 'extra_hours_request.hours_normal', 'extra_hours_request.payable_hours')
+    def _compute_hours_fields(self):
+        """Calcular campos de horas desde solicitud o desde valores almacenados"""
+        for attendance in self:
+            if attendance.extra_hours_request_id:
+                # Si hay solicitud, usar valores de la solicitud
+                request = attendance.extra_hours_request_id[0]
+                attendance.hours_normal = request.hours_normal or 0.0
+                attendance.hours_25 = request.hours_25 or 0.0
+                attendance.hours_50 = request.hours_50 or 0.0
+                attendance.hours_75 = request.hours_75 or 0.0
+                attendance.hours_100 = request.hours_100 or 0.0
+                attendance.payable_hours = request.payable_hours or 0.0
+            else:
+                # Si no hay solicitud, usar valores almacenados
+                attendance.hours_normal = 0.0
+                attendance.hours_25 = attendance.hours_25_stored or 0.0
+                attendance.hours_50 = attendance.hours_50_stored or 0.0
+                attendance.hours_75 = attendance.hours_75_stored or 0.0
+                attendance.hours_100 = attendance.hours_100_stored or 0.0
+                # Calcular horas pagables desde valores almacenados
+                attendance.payable_hours = (attendance.hours_25_stored or 0.0) + \
+                                          (attendance.hours_50_stored or 0.0) + \
+                                          (attendance.hours_75_stored or 0.0) + \
+                                          (attendance.hours_100_stored or 0.0)
     
     @api.depends('hours_25', 'hours_50', 'hours_75', 'hours_100')
     def _compute_total_extra_hours(self):
@@ -960,6 +1014,13 @@ class HrAttendance(models.Model):
         result = self._calculate_extra_hours_only()
         
         if not result or result['total'] == 0:
+            # Limpiar valores almacenados si no hay horas extra
+            self.write({
+                'hours_25_stored': 0.0,
+                'hours_50_stored': 0.0,
+                'hours_75_stored': 0.0,
+                'hours_100_stored': 0.0,
+            })
             return {
                 'type': 'ir.actions.client',
                 'tag': 'display_notification',
@@ -971,49 +1032,26 @@ class HrAttendance(models.Model):
                 }
             }
         
-        # Verificar si ya existe una solicitud para actualizar
-        existing_request = self.env['hr.extra.hours.request'].search([
-            ('attendance_id', '=', self.id)
-        ], limit=1)
+        # Guardar valores calculados en campos almacenados (sin crear solicitud)
+        self.write({
+            'hours_25_stored': result.get('hours_25', 0.0),
+            'hours_50_stored': result.get('hours_50', 0.0),
+            'hours_75_stored': result.get('hours_75', 0.0),
+            'hours_100_stored': result.get('hours_100', 0.0),
+        })
         
-        if existing_request:
-            # Si ya existe, actualizar con los valores calculados
-            existing_request.write({
-                'hours_25': result['hours_25'],
-                'hours_50': result['hours_50'],
-                'hours_75': result['hours_75'],
-                'hours_100': result['hours_100'],
-            })
-            # Forzar recálculo de campos computed
-            existing_request._compute_payable_hours()
-            existing_request._compute_overtime_hours()
-            
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _('Horas Extra Calculadas'),
-                    'message': _('Horas extra calculadas: 25%%=%.2f, 50%%=%.2f, 75%%=%.2f, Domingo=%.2f, Total=%.2f') % (
-                        result['hours_25'], result['hours_50'], result['hours_75'], result['hours_100'], result['total']
-                    ),
-                    'type': 'success',
-                    'sticky': False,
-                }
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Horas Extra Calculadas'),
+                'message': _('Horas extra calculadas: 25%%=%.2f, 50%%=%.2f, 75%%=%.2f, Domingo=%.2f, Total=%.2f') % (
+                    result['hours_25'], result['hours_50'], result['hours_75'], result['hours_100'], result['total']
+                ),
+                'type': 'success',
+                'sticky': False,
             }
-        else:
-            # Si no existe solicitud, solo mostrar el resultado
-            return {
-                'type': 'ir.actions.client',
-                'tag': 'display_notification',
-                'params': {
-                    'title': _('Horas Extra Calculadas'),
-                    'message': _('Horas extra calculadas: 25%%=%.2f, 50%%=%.2f, 75%%=%.2f, Domingo=%.2f, Total=%.2f\n\nNota: No se creó solicitud automática.') % (
-                        result['hours_25'], result['hours_50'], result['hours_75'], result['hours_100'], result['total']
-                    ),
-                    'type': 'success',
-                    'sticky': False,
-                }
-            }
+        }
     
     def action_recalculate_hours(self):
         """Recalcular horas normales y extra para la solicitud asociada"""

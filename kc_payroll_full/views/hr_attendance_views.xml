@@ -8,26 +8,37 @@
             <field name="model">hr.attendance</field>
             <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
             <field name="arch" type="xml">
-                <!-- Agregar campos de horario programado y asistencia parcial después de check_in -->
+                <!-- Agregar campos de asistencia parcial después de check_in -->
                 <xpath expr="//field[@name='check_in']" position="after">
-                    <group string="Horario Programado" col="2" invisible="not check_in_schedule and not check_out_schedule">
-                        <field name="check_in_schedule" 
-                               string="Entrada según Horario" 
-                               invisible="not check_in_schedule" 
-                               readonly="1" 
-                               widget="datetime"/>
-                        <field name="check_out_schedule" 
-                               string="Salida según Horario" 
-                               invisible="not check_out_schedule" 
-                               readonly="1" 
-                               widget="datetime"/>
-                    </group>
-                    <group string="Asistencia Parcial" col="2" invisible="not is_partial">
-                        <field name="is_partial" readonly="1"/>
+                    <group string="Asistencia Parcial" col="2">
+                        <field name="is_partial" 
+                               string="¿Es Asistencia Parcial?" 
+                               readonly="1"
+                               widget="boolean_toggle"/>
                         <field name="partial_type" 
+                               string="Tipo de Asistencia Parcial"
                                readonly="1" 
-                               invisible="not is_partial"/>
+                               invisible="not is_partial"
+                               widget="radio"
+                               options="{'horizontal': true}"/>
                     </group>
+                </xpath>
+                <!-- Agregar pestaña de Horario Programado al notebook existente (creado por kc_biometric_connect) -->
+                <xpath expr="//notebook" position="inside">
+                    <page string="Horario Programado">
+                        <group>
+                            <group string="Horario Programado" col="2">
+                                <field name="check_in_schedule" 
+                                       string="Entrada Programada" 
+                                       widget="datetime"
+                                       options="{'datepicker': {'minDate': false, 'maxDate': false}}"/>
+                                <field name="check_out_schedule" 
+                                       string="Salida Programada" 
+                                       widget="datetime"
+                                       options="{'datepicker': {'minDate': false, 'maxDate': false}}"/>
+                            </group>
+                        </group>
+                    </page>
                 </xpath>
             </field>
         </record>
