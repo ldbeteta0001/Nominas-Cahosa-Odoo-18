@@ -2,40 +2,41 @@
 {
     'name': 'KC - Nómina Completa',
     'version': '18.0.1.0.0',
-    'category': 'Human Resources/Payroll',
-    'summary': 'Módulo completo de nómina con gestión de horarios y horas extra',
+    'category': 'Human Resources',
+    'summary': 'Módulo completo de nómina con gestión de turnos y rotaciones',
     'description': """
-        Módulo de nómina completo que incluye:
-        - Gestión de horarios de trabajo
-        - Cálculo de horas extra (HE25, HE50, HE75)
-        - Historial de cambios de horarios
-        - Nómina semanal con límite de 44 horas normales
-        - Turnos nocturnos
+        Módulo completo de nómina con:
+        - Gestión de rotación de turnos día/noche
+        - Historial de turnos por empleado
+        - Programación de rotaciones
+        - Importación de asistencias
+        - Reportes de asistencia
     """,
-    'author': 'Kenosis Company',
-    'website': 'https://www.kenosiscompany.com',
+    'author': 'Super2Caminos',
+    'website': 'https://www.super2caminos.com',
     'depends': [
         'base',
         'hr',
         'hr_contract',
         'hr_payroll',
         'hr_attendance',
-        'resource',
+        'kc_hr_extra_hours_request',
     ],
     'data': [
         'security/ir.model.access.csv',
-        'views/resource_calendar_views.xml',
-        'views/hr_employee_views.xml',
-        'views/hr_employee_schedule_history_views.xml',
-        'views/hr_attendance_views.xml',
-        'views/overtime_config_views.xml',
-        'wizard/change_schedule_wizard_views.xml',
+        'wizard/shift_assignment_import_wizard_views.xml',
         'wizard/hr_attendance_import_views.xml',
+        'views/resource_calendar_views.xml',
+        'views/hr_attendance_views.xml',
+        'views/hr_employee_schedule_history_views.xml',
+        'views/hr_shift_rotation_views.xml',
+        'views/hr_employee_shift_history_views.xml',
+        'views/hr_employee_shift_assignment_views.xml',
+        'views/hr_employee_views.xml',
+        'views/hr_contract_views.xml',
     ],
-    'demo': [],
     'installable': True,
     'auto_install': False,
     'application': False,
     'license': 'LGPL-3',
 }
-

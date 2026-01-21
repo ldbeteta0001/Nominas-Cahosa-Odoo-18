@@ -20,13 +20,19 @@
                     <field name="reason" placeholder="Ej: Turno semanal del 5-11 de mayo"/>
                 </group>
 
-                <!-- Botón de búsqueda -->
+                <!-- Botones de búsqueda e importación -->
                 <div class="oe_button_box">
                     <button name="search_employees"
                             string="🔍 Buscar empleados"
                             type="object"
                             class="btn-secondary"
                             help="Buscar empleados con el horario seleccionado en el rango de fechas"/>
+                    <button name="%(action_shift_assignment_import_wizard)d"
+                            string="📤 Importar desde Excel"
+                            type="action"
+                            class="btn-primary"
+                            icon="fa-upload"
+                            help="Importar asignaciones de turnos desde un archivo Excel"/>
                 </div>
 
                 <notebook>
@@ -61,10 +67,10 @@
     </record>
 
     <!-- Menú dentro de Configuración de Nómina -->
-    <menuitem id="menu_change_work_schedule"
+    <!-- <menuitem id="menu_change_work_schedule"
               name="Cambiar horario de trabajo"
               parent="hr.menu_hr_root"
               action="action_change_work_schedule_wizard"
-              sequence="10"/>
+              sequence="10"/> -->
 
 </odoo>

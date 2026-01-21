@@ -1,35 +1,30 @@
 # -*- coding: utf-8 -*-
-
 from odoo import fields, models
 
 
 class ResourceCalendar(models.Model):
-    """Extender resource.calendar para agregar campos de nómina semanal y turno nocturno"""
     _inherit = 'resource.calendar'
+
+    nocturna = fields.Boolean(
+        string='Turno Nocturno',
+        help="Marcar si el horario abarca medianoche"
+    )
+
+    es_turno_24_horas = fields.Boolean(
+        string='Turno de 24 Horas',
+        help="Marcar si el horario es de 24 horas. Día: 06:00-18:00, Noche: 19:00-06:00"
+    )
 
     es_nomina_semanal = fields.Boolean(
         string='Nómina Semanal',
-        default=False,
-        help='Marcar si este horario aplica para nómina semanal. '
-             'En horarios semanales de día, solo se pagan 44 horas como normales, '
-             'las horas adicionales se cuentan como horas extra.'
-    )
-    nocturna = fields.Boolean(
-        string='Turno Nocturno',
-        default=False,
-        help='Marcar si este es un turno nocturno. '
-             'Los turnos nocturnos tienen lógica especial para horas que cruzan medianoche.'
+        help='Indica que este calendario se utiliza para nóminas semanales'
     )
 
 
 class ResourceCalendarAttendance(models.Model):
-    """Extender resource.calendar.attendance para agregar campo shift_group"""
     _inherit = 'resource.calendar.attendance'
 
     shift_group = fields.Char(
         string='Grupo de Turno',
-        help='Identificador para agrupar líneas de horario relacionadas '
-             '(por ejemplo, para turnos nocturnos que cruzan medianoche). '
-             'Las líneas con el mismo shift_group pertenecen al mismo turno.'
+        help='Identificador para agrupar líneas de horario relacionadas (ej. "Día", "Noche")'
     )
-

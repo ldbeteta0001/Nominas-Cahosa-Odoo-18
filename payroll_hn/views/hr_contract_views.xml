@@ -108,6 +108,10 @@
                 </button>
             </div>
 
+            <field name="wage_type" position="after">
+                <field name="schedule_pay"/>
+            </field>
+
             <xpath expr="//div[@name='wage']" position="replace">
                 <div class="o_row mw-50" name="wage">
                     <field name="wage" class="oe_inline o_hr_narrow_field" nolabel="1"/>
@@ -128,64 +132,49 @@
                     <group>
                         <group name="group_rap" string="RAP">
                             <field name="apply_rap" widget="boolean_toggle"/>
-                            <field name="rap_calculation_type" invisible="not apply_rap"/>
-                            <field name="rap_id" 
-                                   required="apply_rap and rap_calculation_type == 'parameter'"
-                                   invisible="not apply_rap or rap_calculation_type == 'manual'"
+                            <field name="rap_id" required="apply_rap == True"
+                                   invisible="apply_rap == False"
                                    options="{'no_create':True}"/>
-                            <field name="amount_rap" 
-                                   readonly="rap_calculation_type == 'parameter'"
-                                   required="apply_rap and rap_calculation_type == 'manual'"
-                                   invisible="not apply_rap"
-                                   force_save="1" 
-                                   widget="monetary" 
-                                   options="{'currency_field': 'currency_id'}"/>
                             <field name="apply_in_rap" required="(schedule_pay == 'bi-weekly') and (apply_rap == True)"
                                    invisible="(schedule_pay != 'bi-weekly') or (apply_rap == False)"/>
+                            <field name="amount_rap" readonly="1" force_save="1" widget="monetary" options="{'currency_field': 'currency_id'}"
+                                   invisible="apply_rap == False"/>
                             <field name="value_rap" readonly="1" force_save="1" widget="monetary" options="{'currency_field': 'currency_id'}"
                                    invisible="(schedule_pay == 'monthly') or (apply_rap == False)"/>
                         </group>
                         <group name="group_ihss" string="IHSS">
                             <field name="apply_ihss" widget="boolean_toggle"/>
-                            <field name="ihss_calculation_type" invisible="not apply_ihss"/>
                             <field name="ihss_id"
-                                   required="apply_ihss and ihss_calculation_type == 'parameter'"
-                                   invisible="not apply_ihss or ihss_calculation_type == 'manual'"
+                                   required="apply_ihss == True"
+                                   invisible="apply_ihss == False"
                                    options="{'no_create':True}"/>
-                            <field name="amount_ihss" 
-                                   readonly="ihss_calculation_type == 'parameter'"
-                                   required="apply_ihss and ihss_calculation_type == 'manual'"
-                                   invisible="not apply_ihss"
-                                   force_save="1" 
-                                   widget="monetary" 
-                                   options="{'currency_field': 'currency_id'}"/>
                             <field name="apply_in_ihss" required="(schedule_pay == 'bi-weekly') and (apply_ihss == True)"
                                    invisible="(schedule_pay != 'bi-weekly') or (apply_ihss == False)"/>
+                            <field name="amount_ihss" readonly="1" force_save="1" widget="monetary" options="{'currency_field': 'currency_id'}"
+                                   invisible="apply_ihss == False"/>
                             <field name="value_ihss" readonly="1" force_save="1" widget="monetary" options="{'currency_field': 'currency_id'}"
                                    invisible="(schedule_pay == 'monthly') or (apply_ihss == False)"/>
                         </group>
                         <group name="group_isr" string="ISR">
                             <field name="apply_isr" widget="boolean_toggle"/>
-                            <field name="isr_calculation_type" invisible="not apply_isr"/>
                             <field name="isr_id"
-                                   required="apply_isr and isr_calculation_type == 'parameter'"
-                                   invisible="not apply_isr or isr_calculation_type == 'manual'"
+                                   required="apply_isr == True"
+                                   invisible="apply_isr == False"
                                    options="{'no_create':True}"/>
-                            <field name="amount_isr"
-                                   readonly="isr_calculation_type == 'parameter'"
-                                   required="apply_isr and isr_calculation_type == 'manual'"
-                                   invisible="not apply_isr"
-                                   force_save="1"
-                                   widget="monetary"
-                                   options="{'currency_field': 'currency_id'}"/>
                             <field name="other_income"
                                    widget="monetary"
                                    options="{'currency_field': 'currency_id'}"
-                                   invisible="apply_isr == False or isr_calculation_type == 'manual'"
+                                   invisible="apply_isr == False"
                                    help="Otros ingresos adicionales para el cálculo del ISR (bonos, comisiones, etc.)"/>
                             <field name="apply_in_isr"
                                    required="(schedule_pay == 'bi-weekly') and (apply_isr == True)"
                                    invisible="(schedule_pay != 'bi-weekly') or (apply_isr == False)"/>
+                            <field name="amount_isr"
+                                   readonly="1"
+                                   force_save="1"
+                                   widget="monetary"
+                                   options="{'currency_field': 'currency_id'}"
+                                   invisible="apply_isr == False"/>
                             <field name="value_isr"
                                    readonly="1"
                                    force_save="1"
@@ -196,35 +185,8 @@
                                     string="🔄 Recalcular ISR" 
                                     type="object" 
                                     class="btn-primary"
-                                    invisible="apply_isr == False or isr_calculation_type == 'manual'"
+                                    invisible="apply_isr == False"
                                     help="Forzar recálculo del ISR y mostrar detalles"/>
-                        </group>
-                        <group name="group_educativo" string="Bono Educativo">
-                            <field name="apply_education" widget="boolean_toggle"/>
-                            <field name="amount_fixed_education" 
-                                   force_save="1" 
-                                   widget="monetary" 
-                                   options="{'currency_field': 'currency_id'}" 
-                                   invisible="apply_education == False"
-                                   help="Monto fijo de bono educativo a aplicar en la nómina"/>
-                        </group>
-                        <group name="group_colegiatura" string="Colegiatura">
-                            <field name="apply_colegiatura" widget="boolean_toggle"/>
-                            <field name="amount_fixed_colegiatura" 
-                                   force_save="1" 
-                                   widget="monetary" 
-                                   options="{'currency_field': 'currency_id'}" 
-                                   invisible="apply_colegiatura == False"
-                                   help="Monto fijo de colegiatura a aplicar en la nómina"/>
-                        </group>
-                        <group name="group_pension" string="Pensión">
-                            <field name="apply_pension" widget="boolean_toggle"/>
-                            <field name="amount_fixed_pension" 
-                                   force_save="1" 
-                                   widget="monetary" 
-                                   options="{'currency_field': 'currency_id'}" 
-                                   invisible="apply_pension == False"
-                                   help="Monto fijo de pensión a aplicar en la nómina"/>
                         </group>
                     </group>
                 </page>

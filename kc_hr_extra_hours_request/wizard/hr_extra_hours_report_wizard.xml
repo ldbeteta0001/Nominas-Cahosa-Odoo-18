@@ -26,11 +26,6 @@
                             <field name="department_ids" widget="many2many_tags"/>
                         </group>
                     </group>
-                    <group>
-                        <group name="branches">
-                            <field name="branch_ids" widget="many2many_tags"/>
-                        </group>
-                    </group>
                     <group invisible="not file_data">
                         <field name="file_name" readonly="1"/>
                         <field name="file_data" filename="file_name" readonly="1"/>

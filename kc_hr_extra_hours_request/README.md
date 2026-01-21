@@ -56,7 +56,6 @@ Módulo completo para la gestión de solicitudes de horas extra en Odoo 18, que 
 
 ### 1. Configurar Empleados
 - Asignar jefe inmediato (`parent_id`)
-- Configurar sucursal (`branch_id`) si se usa
 - Establecer tolerancia de horas extra (opcional)
 
 ### 2. Configurar Motivos

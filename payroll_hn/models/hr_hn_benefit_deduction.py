@@ -10,7 +10,7 @@ class HrHnBenefitDeduction(models.Model):
     rule_id = fields.Many2one(string="Regla", comodel_name="hr.salary.rule", required=True)
     state = fields.Selection(string="Estado", selection=[('draft','Borrador'),('pause','Pausa'),('progress','Progreso'),('done','Finalizado')], default='draft')
     periodicity = fields.Selection(string="Periodicidad", selection=[('finite','Finito'),('infinite','Infinito')], required=True)
-    fee_amount = fields.Float(string="Cuota mensual")
+    fee_amount = fields.Float(string="Monto cuota")
     fee_amount_apply = fields.Float(string="Monto cuota aplicar", compute="_compute_fee_amount_apply", store=True)
     schedule_pay = fields.Selection(string="Pago programado", related="contract_id.schedule_pay")
     apply_in = fields.Selection([('first', 'Primera quincena'),('second', 'Segunda quincena'),('both', 'Ambas quincenas')], string="Aplicar en", default="both")
@@ -49,31 +49,21 @@ class HrHnBenefitDeduction(models.Model):
 
     @api.depends('schedule_pay','fee_amount','apply_in')
     def _compute_fee_amount_apply(self):
-        # fee_amount = monto mensual
-        # fee_amount_apply = monto por cuota según schedule_pay (se calcula dividiendo el mensual)
-        frequency_divider = {
-            'annually': 12,  # Anual: dividir mensual entre 12
-            'semi-annually': 6,  # Semestral: dividir mensual entre 6
-            'quarterly': 4,  # Trimestral: dividir mensual entre 4
-            'bi-monthly': 2,  # Bimestral: dividir mensual entre 2
-            'monthly': 1,  # Mensual: sin conversión
-            'bi-weekly': 0.5,  # Quincenal: dividir mensual entre 0.5 (multiplicar por 2)
-            'weekly': 4.33,  # Semanal: dividir mensual entre 4.33
+        frequency_multiplier = {
+            'annually': 12,
+            'semi-annually': 6,
+            'quarterly': 4,
+            'bi-monthly': 2,
+            'bi-weekly': 0.5,
+            'weekly': 1 / 4.33,  # Aproximadamente 4.33 semanas en un mes
         }
         
         for rec in self:
-            # Para quincenal, ajustar según apply_in
-            if rec.schedule_pay == 'bi-weekly':
-                if rec.apply_in == 'both':
-                    # Si se aplica en ambas quincenas, el monto por cuota es la mitad del mensual
-                    rec.fee_amount_apply = rec.fee_amount / 2
-                else:
-                    # Si solo se aplica en una quincena, el monto por cuota es igual al mensual
-                    rec.fee_amount_apply = rec.fee_amount
+            fee_amount_apply = rec.fee_amount * frequency_multiplier.get(rec.schedule_pay, 1)
+            if rec.apply_in == 'both':
+                rec.fee_amount_apply = fee_amount_apply
             else:
-                # Calcular el monto por cuota dividiendo el mensual
-                divider = frequency_divider.get(rec.schedule_pay, 1)
-                rec.fee_amount_apply = rec.fee_amount / divider
+                rec.fee_amount_apply = fee_amount_apply * 2
     
     def get_fee_amount(self):
         return self.fee_amount_apply

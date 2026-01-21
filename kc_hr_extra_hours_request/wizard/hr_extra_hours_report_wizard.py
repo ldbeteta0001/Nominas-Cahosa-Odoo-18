@@ -35,12 +35,6 @@ class HrExtraHoursReportWizard(models.TransientModel):
         help='Dejar vacío para incluir todos los departamentos'
     )
     
-    branch_ids = fields.Many2many(
-        'res.branch',
-        string='Sucursales',
-        help='Dejar vacío para incluir todas las sucursales'
-    )
-    
     state = fields.Selection([
         ('all', 'Todos'),
         ('approved', 'Solo Aprobadas'),
@@ -52,8 +46,7 @@ class HrExtraHoursReportWizard(models.TransientModel):
         ('summary', 'Resumen'),
         ('detail', 'Detallado'),
         ('by_employee', 'Por Empleado'),
-        ('by_reason', 'Por Motivo'),
-        ('by_branch', 'Por Sucursal')
+        ('by_reason', 'Por Motivo')
     ], string='Tipo de Reporte', default='summary', required=True)
     
     file_name = fields.Char(
@@ -125,9 +118,6 @@ class HrExtraHoursReportWizard(models.TransientModel):
         if self.department_ids:
             domain.append(('department_id', 'in', self.department_ids.ids))
         
-        if self.branch_ids:
-            domain.append(('branch_id', 'in', self.branch_ids.ids))
-        
         return domain
 
     def _generate_excel(self, requests):
@@ -162,8 +152,6 @@ class HrExtraHoursReportWizard(models.TransientModel):
             self._generate_by_employee_sheet(workbook, requests, header_format, data_format, number_format)
         elif self.report_type == 'by_reason':
             self._generate_by_reason_sheet(workbook, requests, header_format, data_format, number_format)
-        elif self.report_type == 'by_branch':
-            self._generate_by_branch_sheet(workbook, requests, header_format, data_format, number_format)
         
         workbook.close()
         return output.getvalue()
@@ -346,49 +334,6 @@ class HrExtraHoursReportWizard(models.TransientModel):
         for reason, data in reason_data.items():
             values = [
                 reason.name if reason else 'Sin Motivo',
-                data['requests'],
-                data['total_hours'],
-                data['payable_hours']
-            ]
-            
-            for col, value in enumerate(values):
-                if col in [2, 3]:  # Horas
-                    worksheet.write(row, col, value, number_format)
-                else:
-                    worksheet.write(row, col, value, data_format)
-            
-            row += 1
-
-    def _generate_by_branch_sheet(self, workbook, requests, header_format, data_format, number_format):
-        """Generar hoja por sucursal"""
-        worksheet = workbook.add_worksheet('Por Sucursal')
-        
-        # Agrupar por sucursal
-        branch_data = {}
-        for request in requests:
-            branch = request.branch_id
-            if branch not in branch_data:
-                branch_data[branch] = {
-                    'requests': 0,
-                    'total_hours': 0,
-                    'payable_hours': 0
-                }
-            
-            branch_data[branch]['requests'] += 1
-            branch_data[branch]['total_hours'] += request.duration_hours
-            branch_data[branch]['payable_hours'] += request.payable_hours
-        
-        # Encabezados
-        headers = ['Sucursal', 'Solicitudes', 'Horas Totales', 'Horas Pagables']
-        
-        for col, header in enumerate(headers):
-            worksheet.write(0, col, header, header_format)
-        
-        # Datos
-        row = 1
-        for branch, data in branch_data.items():
-            values = [
-                branch.name if branch else 'Sin Sucursal',
                 data['requests'],
                 data['total_hours'],
                 data['payable_hours']
