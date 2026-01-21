@@ -173,7 +173,7 @@ class HrHnAssignBenefitDeduction(models.Model):
             if self.schedule_pay != contract_id.schedule_pay:
                 raise ValidationError(f"El empleado {line.employee_id.name} cuenta con un pago programado distinto al que se quiere aplicar.")
             
-            if line.amount < 1:
+            if line.amount < 0:
                 raise ValidationError(f"El monto del empleado {line.employee_id.name} debe de ser mayor a cero.")
             
             # El monto ingresado es el monto por cuota según schedule_pay (ej: semanal = 16.84)
