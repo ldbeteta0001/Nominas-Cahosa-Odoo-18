@@ -7,9 +7,21 @@
             <field name="model">hr.attendance</field>
             <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
             <field name="arch" type="xml">
-                <!-- Agregar botón para recalcular horas -->
+                <!-- Agregar botones para calcular y recalcular horas -->
                 <xpath expr="//sheet" position="before">
                     <header>
+                        <button name="action_update_work_schedule"
+                                type="object"
+                                string="Actualizar Horario de Trabajo"
+                                class="btn-secondary"
+                                icon="fa-clock-o"
+                                invisible="not check_in"/>
+                        <button name="action_calculate_extra_hours"
+                                type="object"
+                                string="Calcular Horas Extra"
+                                class="oe_highlight"
+                                icon="fa-calculator"
+                                invisible="not check_out or has_extra_hours_request"/>
                         <button name="action_recalculate_hours"
                                 type="object"
                                 string="Recalcular Horas"
@@ -20,12 +32,14 @@
                 </xpath>
                 
                 <!-- Agregar sección de horas calculadas después de check_out -->
-                <xpath expr="//field[@name='check_out']" position="after">
-                    <separator string="Distribución de Horas" 
-                               invisible="not has_extra_hours_request"/>
-                    <group invisible="not has_extra_hours_request" col="2">
+                <!-- Esta sección se carga al final, después de información biométrica si existe -->
+                <!-- Buscar después del separador biométrico si existe, o después de check_out -->
+                <xpath expr="//separator[@string='Información Biométrica']/following-sibling::group[1] | //field[@name='check_out']" position="after">
+                    <separator string="Distribución de Horas" invisible="not hours_normal and not total_extra_hours"/>
+                    <group col="2" invisible="not hours_normal and not total_extra_hours">
                         <group string="Horas Normales (100%)">
                             <field name="hours_normal" 
+                                   string="Horas Normales"
                                    readonly="1"
                                    widget="float_time"
                                    decoration-success="hours_normal > 0"/>
@@ -46,6 +60,11 @@
                                    readonly="1"
                                    widget="float_time"
                                    decoration-danger="hours_75 > 0"/>
+                            <field name="hours_100" 
+                                   string="Horas Domingo (100%)"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-primary="hours_100 > 0"/>
                             <field name="total_extra_hours" 
                                    string="Total Horas Extra"
                                    readonly="1"
@@ -53,7 +72,52 @@
                                    decoration-primary="total_extra_hours > 0"/>
                         </group>
                     </group>
-                    <group invisible="not has_extra_hours_request">
+                    <group string="Resumen" invisible="not payable_hours">
+                        <field name="payable_hours" 
+                               string="Horas Pagables"
+                               readonly="1"
+                               widget="float_time"
+                               decoration-success="payable_hours > 0"/>
+                    </group>
+                </xpath>
+                    <separator string="Distribución de Horas" invisible="not hours_normal and not total_extra_hours"/>
+                    <group col="2" invisible="not hours_normal and not total_extra_hours">
+                        <group string="Horas Normales (100%)">
+                            <field name="hours_normal" 
+                                   string="Horas Normales"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-success="hours_normal > 0"/>
+                        </group>
+                        <group string="Horas Extra">
+                            <field name="hours_25" 
+                                   string="Horas 25%"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-info="hours_25 > 0"/>
+                            <field name="hours_50" 
+                                   string="Horas 50%"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-warning="hours_50 > 0"/>
+                            <field name="hours_75" 
+                                   string="Horas 75%"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-danger="hours_75 > 0"/>
+                            <field name="hours_100" 
+                                   string="Horas Domingo (100%)"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-primary="hours_100 > 0"/>
+                            <field name="total_extra_hours" 
+                                   string="Total Horas Extra"
+                                   readonly="1"
+                                   widget="float_time"
+                                   decoration-primary="total_extra_hours > 0"/>
+                        </group>
+                    </group>
+                    <group string="Resumen" invisible="not payable_hours">
                         <field name="payable_hours" 
                                string="Horas Pagables"
                                readonly="1"

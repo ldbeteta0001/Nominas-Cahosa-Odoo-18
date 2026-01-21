@@ -1,6 +1,10 @@
 # wizards/change_work_schedule_wizard.py
 from odoo import api, fields, models, _
 from odoo.exceptions import ValidationError
+from datetime import datetime
+import logging
+
+_logger = logging.getLogger(__name__)
 
 
 class ChangeWorkScheduleWizard(models.TransientModel):
@@ -193,6 +197,33 @@ class ChangeWorkScheduleWizard(models.TransientModel):
                     ])
                     if contratos:
                         contratos.write({'resource_calendar_id': self.new_calendar_id.id})
+                
+                # Determinar turno según el nuevo horario y actualizar historial de turnos si es necesario
+                # Obtener turno del empleado actual
+                current_shift_period = employee.current_shift_period
+                
+                # Determinar turno del nuevo calendario analizando las horas
+                new_shift_period = self._determine_shift_period_from_calendar(self.new_calendar_id)
+                
+                # Si el turno cambió o no hay turno asignado, crear/actualizar historial de turnos
+                if new_shift_period and new_shift_period != current_shift_period:
+                    # Crear registro en historial de turnos
+                    history_model = self.env['hr.employee.shift.history']
+                    history_model.with_context(skip_overlap_check=True).create({
+                        'employee_id': employee.id,
+                        'shift_period': new_shift_period,
+                        'date_from': self.change_date,
+                        'date_to': self.change_date_to if self.change_date_to else False,
+                        'reason': self.reason or _('Cambio de turno por cambio de horario desde %s') % self.change_date,
+                        'changed_by': self.env.user.id
+                    })
+                    
+                    # Recalcular el current_shift_period del empleado
+                    employee.invalidate_recordset(['current_shift_period'])
+                    employee._compute_current_shift_period()
+                    
+                    _logger.info('Turno actualizado para empleado %s: %s -> %s', 
+                                employee.name, current_shift_period, new_shift_period)
 
                 range_text = f"{self.change_date}"
                 if self.change_date_to:
@@ -231,3 +262,34 @@ class ChangeWorkScheduleWizard(models.TransientModel):
                     'type': 'success'
                 }
             }
+    
+    def _determine_shift_period_from_calendar(self, calendar):
+        """
+        Determinar el turno (día/noche) basándose en las horas del calendario
+        
+        Lógica:
+        - Turno día: Horario principal entre 06:00-18:00
+        - Turno noche: Horario principal entre 18:00-06:00
+        
+        Retorna: 'dia', 'noche' o False
+        """
+        if not calendar or not calendar.attendance_ids:
+            return False
+        
+        # Buscar períodos que crucen medianoche (00:00-06:00)
+        night_periods = calendar.attendance_ids.filtered(
+            lambda x: x.hour_from >= 18.0 or (x.hour_from < 6.0 and x.hour_to <= 6.0) or
+                     (x.hour_from >= 18.0 and x.hour_to <= 24.0) or
+                     (x.hour_from >= 0.0 and x.hour_to <= 6.0)
+        )
+        
+        # Si hay períodos que cruzan medianoche o están entre 18:00-06:00, es turno noche
+        if night_periods:
+            # Verificar si el período principal es nocturno
+            for att in calendar.attendance_ids:
+                # Si hay un período que empieza a las 18:00 o después, es turno noche
+                if att.hour_from >= 18.0 or (att.hour_from < 6.0):
+                    return 'noche'
+        
+        # Por defecto, es turno día
+        return 'dia'

@@ -173,39 +173,29 @@ class HrHnAssignBenefitDeduction(models.Model):
             if self.schedule_pay != contract_id.schedule_pay:
                 raise ValidationError(f"El empleado {line.employee_id.name} cuenta con un pago programado distinto al que se quiere aplicar.")
             
-            if line.amount < 0:
+            if line.amount < 1:
                 raise ValidationError(f"El monto del empleado {line.employee_id.name} debe de ser mayor a cero.")
             
-            # El monto ingresado es el monto por cuota según schedule_pay (ej: semanal = 16.84)
-            # fee_amount debe ser el monto mensual equivalente
-            # fee_amount_apply se calculará automáticamente por el compute como monto por cuota
-            frequency_multiplier = {
-                'annually': 12,
-                'semi-annually': 6,
-                'quarterly': 4,
-                'bi-monthly': 2,
-                'monthly': 1,
-                'bi-weekly': 0.5,
-                'weekly': 4.33,  # Semanal a mensual: multiplicar por 4.33
-            }
-            
-            # Convertir el monto por cuota a monto mensual
+            if self.schedule_pay == 'weekly':
+                fee_amount_apply = line.amount / (1/4)
+            else:
+                fee_amount_apply = line.amount / frequency_multiplier.get(self.schedule_pay, 1)
+
             if self.schedule_pay == 'bi-weekly':
                 if self.apply_in == 'both':
-                    # Si se aplica en ambas quincenas, el mensual es el doble del quincenal
-                    fee_amount = line.amount * 2
+                    amount = fee_amount_apply
                 else:
-                    # Si solo se aplica en una quincena, el mensual es igual al quincenal
-                    fee_amount = line.amount
+                    amount = fee_amount_apply / 2
             else:
-                fee_amount = line.amount * frequency_multiplier.get(self.schedule_pay, 1)
+                amount = fee_amount_apply
             
             vals = {
                 'category': self.category,
                 'rule_id': self.rule_id.id,
                 'state': 'progress',
                 'periodicity': self.periodicity,
-                'fee_amount': fee_amount,
+                'fee_amount': amount,
+                'fee_amount_apply': line.amount,
                 'description': line.description,
                 'schedule_pay': self.schedule_pay,
                 'apply_in': self.apply_in,

@@ -99,6 +99,13 @@ class HrExtraHoursRequest(models.Model):
         help='Horas extra con recargo del 75%'
     )
     
+    hours_100 = fields.Float(
+        string='Horas Domingo (100%)',
+        default=0.0,
+        tracking=True,
+        help='Horas extra con recargo del 100% (domingos)'
+    )
+    
     hours_normal = fields.Float(
         string='Horas Normales',
         compute='_compute_hours_normal',
@@ -198,14 +205,6 @@ class HrExtraHoursRequest(models.Model):
         readonly=True
     )
     
-    branch_id = fields.Many2one(
-        'res.branch',
-        string='Sucursal',
-        related='employee_id.branch_id',
-        store=True,
-        readonly=True
-    )
-    
     # Campos calculados para reportes
     month = fields.Char(
         string='Mes',
@@ -259,10 +258,17 @@ class HrExtraHoursRequest(models.Model):
             
             # Convertir hour_from y hour_to (float) a objetos time
             def float_to_time(hour_float):
-                """Convierte un float de horas a un objeto time"""
-                hours = int(hour_float)
-                minutes = int((hour_float - hours) * 60)
-                return time(hours, minutes)
+                """Convierte un float de horas a un objeto time, manejando valores >= 24"""
+                if hour_float >= 24.0:
+                    # Si es 24.0 o mayor, usar 23:59:59 como máximo
+                    hours = 23
+                    minutes = 59
+                    seconds = 59
+                else:
+                    hours = int(hour_float)
+                    minutes = int((hour_float - hours) * 60)
+                    seconds = int(((hour_float - hours) * 60 - minutes) * 60)
+                return time(hours, minutes, seconds)
             
             date_obj = record.date
             
@@ -273,7 +279,13 @@ class HrExtraHoursRequest(models.Model):
             # Crear datetime en zona horaria local (sin timezone info)
             # Usar la zona horaria del usuario para crear el datetime correctamente
             expected_check_in_naive = datetime.combine(date_obj, float_to_time(first_attendance.hour_from))
-            expected_check_out_naive = datetime.combine(date_obj, float_to_time(last_attendance.hour_to))
+            expected_check_out_time = float_to_time(last_attendance.hour_to)
+            
+            # Si hour_to es >= 24, el check_out es del día siguiente
+            if last_attendance.hour_to >= 24.0:
+                expected_check_out_naive = datetime.combine(date_obj + timedelta(days=1), expected_check_out_time)
+            else:
+                expected_check_out_naive = datetime.combine(date_obj, expected_check_out_time)
             
             # Convertir a zona horaria local del usuario
             # Primero localizar en la zona horaria del usuario, luego quitar timezone info
@@ -363,10 +375,17 @@ class HrExtraHoursRequest(models.Model):
             
             # Convertir hour_from y hour_to (float) a objetos time
             def float_to_time(hour_float):
-                """Convierte un float de horas a un objeto time"""
-                hours = int(hour_float)
-                minutes = int((hour_float - hours) * 60)
-                return time(hours, minutes)
+                """Convierte un float de horas a un objeto time, manejando valores >= 24"""
+                if hour_float >= 24.0:
+                    # Si es 24.0 o mayor, usar 23:59:59 como máximo
+                    hours = 23
+                    minutes = 59
+                    seconds = 59
+                else:
+                    hours = int(hour_float)
+                    minutes = int((hour_float - hours) * 60)
+                    seconds = int(((hour_float - hours) * 60 - minutes) * 60)
+                return time(hours, minutes, seconds)
             
             # Usar la fecha del campo date si está disponible, sino usar la fecha del check_in
             if record.date:
@@ -446,7 +465,7 @@ class HrExtraHoursRequest(models.Model):
             _logger.info('=== Total horas normales calculadas: %.2f ===', total_normal_hours)
             record.hours_normal = total_normal_hours
     
-    @api.depends('hours_25', 'hours_50', 'hours_75')
+    @api.depends('hours_25', 'hours_50', 'hours_75', 'hours_100')
     def _compute_payable_hours(self):
         """
         Calcular horas pagables como la suma de horas extra
@@ -455,7 +474,7 @@ class HrExtraHoursRequest(models.Model):
         for record in self:
             # Si el campo ya tiene un valor y fue modificado manualmente, no lo sobrescribimos
             # Pero si es la primera vez o las horas extra cambiaron, actualizamos
-            total_extra = record.hours_25 + record.hours_50 + record.hours_75
+            total_extra = record.hours_25 + record.hours_50 + record.hours_75 + record.hours_100
             # Solo actualizar si no hay valor o si el valor actual es diferente al calculado
             # (esto permite que el aprobador modifique manualmente)
             if not record.payable_hours or record.payable_hours == 0.0:
@@ -572,12 +591,28 @@ class HrExtraHoursRequest(models.Model):
         date_obj = check_in.date() if hasattr(check_in, 'date') else date
         
         def float_to_time(hour_float):
-            hours = int(hour_float)
-            minutes = int((hour_float - hours) * 60)
-            return time(hours, minutes)
+            """Convierte un float de horas a un objeto time, manejando valores >= 24"""
+            if hour_float >= 24.0:
+                # Si es 24.0 o mayor, usar 23:59:59 como máximo
+                hours = 23
+                minutes = 59
+                seconds = 59
+            else:
+                hours = int(hour_float)
+                minutes = int((hour_float - hours) * 60)
+                seconds = int(((hour_float - hours) * 60 - minutes) * 60)
+            return time(hours, minutes, seconds)
         
-        expected_check_in = datetime.combine(date_obj, float_to_time(attendance.hour_from))
-        expected_check_out = datetime.combine(date_obj, float_to_time(attendance.hour_to))
+        expected_check_in_time = float_to_time(attendance.hour_from)
+        expected_check_out_time = float_to_time(attendance.hour_to)
+        
+        expected_check_in = datetime.combine(date_obj, expected_check_in_time)
+        
+        # Si hour_to es >= 24, el check_out es del día siguiente
+        if attendance.hour_to >= 24.0:
+            expected_check_out = datetime.combine(date_obj + timedelta(days=1), expected_check_out_time)
+        else:
+            expected_check_out = datetime.combine(date_obj, expected_check_out_time)
         
         # Determinar qué horas son extra
         if check_in < expected_check_in:

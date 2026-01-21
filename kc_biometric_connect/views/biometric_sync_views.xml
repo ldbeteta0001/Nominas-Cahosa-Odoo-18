@@ -90,8 +90,8 @@
         <field name="model">hr.employee</field>
         <field name="inherit_id" ref="hr.view_employee_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//group[field[@name='coach_id']]" position="after">
-                <group string="Configuración Biométrica" name="biometric_config">
+            <xpath expr="//field[@name='category_ids']" position="after">
+                <group string="Configuración Biométrica">
                     <field name="biometric_user_id"/>
                     <field name="biometric_device_id"/>
                     <field name="biometric_sync_active"/>
@@ -101,15 +101,17 @@
     </record>
 
     <!-- Extensión de vista de asistencia -->
+    <!-- Esta vista se carga después de kc_payroll_full y antes de kc_hr_extra_hours_request -->
     <record id="view_attendance_form_biometric" model="ir.ui.view">
         <field name="name">hr.attendance.form.biometric</field>
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
         <field name="arch" type="xml">
-            <xpath expr="//group[@name='check_out_group']" position="inside">
+            <!-- Agregar información biométrica después de check_out, antes de la sección de horas extra -->
+            <xpath expr="//field[@name='check_out']" position="after">
                 <field name="is_biometric" invisible="1"/>
-                <separator string="Información Biométrica" invisible="not is_biometric or not check_out"/>
-                <group invisible="not is_biometric or not check_out">
+                <separator string="Información Biométrica" invisible="not is_biometric"/>
+                <group invisible="not is_biometric" col="2">
                     <field name="biometric_device_id"/>
                     <field name="biometric_punch_time"/>
                 </group>

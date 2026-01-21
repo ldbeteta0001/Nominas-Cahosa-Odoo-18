@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 {
     'name': 'Kenocia - Gestión de Horas Extra',
-    'version': '18.0.1.0.0',
+    'version': '18.0.1.0.1',
     'category': 'Human Resources',
     'summary': 'Gestión completa de solicitudes de horas extra con aprobación automática',
     'description': """
@@ -12,8 +12,8 @@
         - Control de acceso por roles
         - Integración con hr.attendance y hr.employee
     """,
-    'author': 'Super2Caminos',
-    'website': 'https://www.super2caminos.com',
+    'author': 'Kenosis Company',
+    'website': 'https://www.kenocia.com',
     'depends': [
         'base',
         'hr',
@@ -23,7 +23,6 @@
         'portal',
         'website',
         'web',
-        'branch',
     ],
     'data': [
         'security/hr_extra_hours_security.xml',

@@ -1,45 +1,52 @@
+<?xml version="1.0" encoding="utf-8"?>
 <odoo>
-    <!-- Vista mejorada del empleado con historial -->
-    <record id="view_hr_employee_form_schedule_history" model="ir.ui.view">
-        <field name="name">hr.employee.form.schedule.history</field>
-        <field name="model">hr.employee</field>
-        <field name="inherit_id" ref="hr.view_employee_form"/>
-        <field name="arch" type="xml">
-            <!-- Agregar fecha de último cambio junto al horario actual -->
-            <xpath expr="//field[@name='resource_calendar_id']" position="after">
-                <field name="last_schedule_change" string="Último cambio"/>
-            </xpath>
+    <data>
+        <!-- Vista heredada de hr.employee para agregar campos de turno -->
+        <record id="view_hr_employee_form_inherit_shift" model="ir.ui.view">
+            <field name="name">hr.employee.form.inherit.shift</field>
+            <field name="model">hr.employee</field>
+            <field name="inherit_id" ref="hr.view_employee_form"/>
+            <field name="arch" type="xml">
+                <!-- Agregar campos de turno después del campo resource_calendar_id dentro del grupo Schedule -->
+                <xpath expr="//field[@name='resource_calendar_id']" position="after">
+                    <field name="current_shift_period"
+                           string="Turno Actual (Historial)"
+                           readonly="1"
+                           widget="badge"
+                           invisible="not resource_calendar_id.es_turno_24_horas"
+                           decoration-info="current_shift_period == 'dia'"
+                           decoration-muted="current_shift_period == 'noche'"
+                           help="Turno actual del empleado basado en el historial de turnos. Día (06:00-18:00) o Noche (18:00-06:00)"/>
+                    <field name="contract_current_shift_period"
+                           string="Turno Actual (Contrato)"
+                           readonly="1"
+                           widget="badge"
+                           invisible="not resource_calendar_id.es_turno_24_horas"
+                           decoration-info="contract_current_shift_period == 'dia'"
+                           decoration-muted="contract_current_shift_period == 'noche'"
+                           help="Turno actual del empleado desde el contrato activo"/>
+                    <field name="last_shift_change"
+                           string="Último Cambio de Turno"
+                           readonly="1"
+                           invisible="not resource_calendar_id.es_turno_24_horas"/>
+                </xpath>
+            </field>
+        </record>
 
-            <xpath expr="//page[@name='hr_settings']" position="after">
-                <page string="Historial de horarios" name="schedule_history">
-                    <field name="schedule_history_ids">
-                        <list decoration-info="is_current == True" editable="bottom">
-                            <field name="previous_calendar_id" string="Horario anterior"/>
-                            <field name="resource_calendar_id" string="Horario actual"/>
-                            <field name="date_from"/>
-                            <field name="date_to"/>
-                            <field name="is_current" column_invisible="1"/>
-                            <field name="reason"/>
-                            <field name="changed_by"/>
-                            <button name="apply_current_schedule"
-                                    string="✅ Aplicar"
-                                    type="object"
-                                    class="btn-primary btn-sm"
-                                    invisible="is_current == True"
-                                    confirm="¿Aplicar este registro?"
-                                    help="Aplicar este registro como actual"/>
-                            <button name="copy_and_create_schedule"
-                                    string="📝 Copiar"
-                                    type="object"
-                                    class="btn-secondary btn-sm"
-                                    invisible="is_current == True"
-                                    confirm="¿Crear nuevo desde hoy?"
-                                    help="Crear nuevo registro desde hoy"/>
-                        </list>
-                    </field>
-                </page>
-            </xpath>
-        </field>
-    </record>
-
+        <!-- Vista de lista heredada para agregar columna de turno -->
+        <record id="view_hr_employee_list_inherit_shift" model="ir.ui.view">
+            <field name="name">hr.employee.list.inherit.shift</field>
+            <field name="model">hr.employee</field>
+            <field name="inherit_id" ref="hr.view_employee_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='job_id']" position="after">
+                    <field name="current_shift_period"
+                           widget="badge"
+                           optional="hide"
+                           decoration-info="current_shift_period == 'dia'"
+                           decoration-muted="current_shift_period == 'noche'"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
 </odoo>

@@ -108,7 +108,7 @@
     'installable': True,
     'application': False,
     'auto_install': False,
-    'post_init_hook': 'hooks.post_init_hook',
+    'post_init_hook': None,
     'uninstall_hook': None,
     'price': 0.0,
     'currency': 'USD',

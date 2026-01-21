@@ -1,7 +1,4 @@
-from . import hr_payslip_import_input
-from . import payroll_excel_wizard
-from . import payment_report_excel
-from . import hr_attendance_import_wizard
-from . import change_schedule_wizard
-from . import attendance_report
-from . import hr_employee_biometric_import
+# -*- coding: utf-8 -*-
+
+from . import shift_assignment_import_wizard
+from . import hr_attendance_import

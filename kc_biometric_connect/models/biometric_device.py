@@ -220,6 +220,7 @@ class BiometricDevice(models.Model):
         
         try:
             _logger.info("Autenticando en BioTime: %s", auth_url)
+            # Timeout más largo para conexiones VPN (30 segundos)
             response = requests.post(
                 auth_url,
                 json={
@@ -227,7 +228,7 @@ class BiometricDevice(models.Model):
                     'password': self.api_password or ''
                 },
                 headers={'Content-Type': 'application/json'},
-                timeout=10,
+                timeout=30,  # Aumentado para conexiones VPN
                 verify=False  # En producción, considerar certificados SSL
             )
             response.raise_for_status()
@@ -282,17 +283,82 @@ class BiometricDevice(models.Model):
             error_msg = str(e)
             if 'No route to host' in error_msg or 'errno 113' in error_msg.lower():
                 error_detail = 'No se puede alcanzar el servidor. No hay ruta al host.'
+                vpn_tips = f'''
+                
+⚠️ PROBLEMA DE CONECTIVIDAD VPN/RED:
+
+El error "No route to host" indica que el VPS no puede alcanzar el servidor BioTime a través de la VPN.
+
+🔍 DIAGNÓSTICO (ejecute estos comandos en el VPS):
+
+1. Verificar conectividad básica:
+   ping -c 4 {self.ip_address}
+
+2. Verificar si el puerto está abierto:
+   telnet {self.ip_address} {self.port}
+   # O con nc (netcat):
+   nc -zv {self.ip_address} {self.port}
+
+3. Verificar rutas de red:
+   ip route | grep {self.ip_address.split('.')[0]}.{self.ip_address.split('.')[1]}
+   # O en Linux:
+   route -n | grep {self.ip_address.split('.')[0]}.{self.ip_address.split('.')[1]}
+
+4. Verificar interfaces de red VPN:
+   ip addr show
+   # Busque interfaces como tun0, tap0, ppp0, wg0, etc.
+
+5. Verificar estado de la VPN:
+   # Depende del tipo de VPN, ejemplos:
+   # OpenVPN: systemctl status openvpn
+   # WireGuard: wg show
+   # StrongSwan: ipsec status
+
+✅ SOLUCIONES COMUNES:
+
+1. Verificar que la VPN esté conectada y activa
+2. Confirmar que la VPN tenga acceso a la red 10.134.x.x (puede estar en otra subred)
+3. Verificar reglas de firewall en el VPS:
+   - iptables -L -n | grep {self.port}
+   - ufw status (si usa UFW)
+4. Verificar que el servidor BioTime permita conexiones desde la IP del VPS
+5. Contactar al administrador de red para verificar:
+   - Que la VPN tenga acceso a la subred 10.134.120.0/24
+   - Que no haya ACLs bloqueando el tráfico
+   - Que las rutas estén configuradas correctamente
+
+📝 NOTA: Si funciona localmente pero no desde el VPS, el problema es de routing/firewall en el VPS o en la configuración de la VPN.'''
             elif 'Connection refused' in error_msg or 'errno 111' in error_msg.lower():
                 error_detail = 'Conexión rechazada. El servidor puede estar apagado o el puerto incorrecto.'
+                vpn_tips = f'''
+                
+⚠️ El servidor responde pero rechaza la conexión:
+- Verifique que el puerto {self.port} sea correcto
+- Verifique que el servicio BioTime esté corriendo en el servidor
+- Verifique firewall en el servidor BioTime (puede estar bloqueando la IP del VPS)'''
             elif 'Name or service not known' in error_msg or 'errno -2' in error_msg.lower():
                 error_detail = 'No se puede resolver el nombre del host. Verifique la IP o nombre del servidor.'
+                vpn_tips = ''
             elif 'timed out' in error_msg.lower() or 'timeout' in error_msg.lower():
                 error_detail = 'Tiempo de espera agotado. El servidor no responde.'
+                vpn_tips = f'''
+                
+⚠️ Si está usando VPN:
+- Las conexiones VPN pueden ser más lentas (timeout aumentado a 30 segundos)
+- Verifique la latencia: ping -c 10 {self.ip_address}
+- Verifique que no haya pérdida de paquetes
+- Considere aumentar el timeout si la VPN es muy lenta'''
             else:
                 error_detail = f'Error de conexión: {error_msg}'
+                vpn_tips = f'''
+                
+⚠️ Error de conexión general:
+- Verifique conectividad: ping {self.ip_address}
+- Verifique puerto: telnet {self.ip_address} {self.port}
+- Verifique firewall y rutas de red'''
             
             _logger.error("Error de conexión al autenticar en servidor: %s - URL: %s", error_msg, auth_url)
-            raise UserError(_('Error de conexión al servidor:\n\n%s\n\nURL: %s\n\nVerifique:\n- Que el servidor esté encendido y accesible\n- Que la IP (%s) y puerto (%s) sean correctos\n- Que no haya firewall bloqueando la conexión\n- Que la red permita conexiones al puerto %s\n- Intente hacer ping a %s desde este servidor') % (error_detail, auth_url, self.ip_address, self.port, self.port, self.ip_address))
+            raise UserError(_('Error de conexión al servidor:\n\n%s\n\nURL: %s\n\nVerifique:\n- Que el servidor esté encendido y accesible\n- Que la IP (%s) y puerto (%s) sean correctos\n- Que no haya firewall bloqueando la conexión\n- Que la red permita conexiones al puerto %s%s') % (error_detail, auth_url, self.ip_address, self.port, self.port, vpn_tips))
         except requests.exceptions.Timeout as e:
             _logger.error("Timeout al autenticar en servidor: %s - URL: %s", str(e), auth_url)
             raise UserError(_('Tiempo de espera agotado al conectar con el servidor:\n\nURL: %s\n\nVerifique:\n- Que el servidor esté respondiendo\n- Que la conexión de red sea estable\n- IP: %s\n- Puerto: %s') % (auth_url, self.ip_address, self.port))

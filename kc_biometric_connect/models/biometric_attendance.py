@@ -126,32 +126,6 @@ class BiometricAttendance(models.Model):
             open_attendance.write({
                 'check_out': check_out_time,
             })
-            # Forzar flush para asegurar que el cambio se persista antes de crear nuevo registro
-            self.env.flush_all()
-        
-        # Verificar nuevamente que no haya registros abiertos después de cerrar el anterior
-        remaining_open = self.env['hr.attendance'].search([
-            ('employee_id', '=', self.employee_id.id),
-            ('check_out', '=', False),
-        ], limit=1)
-        
-        if remaining_open:
-            # Si encontramos un registro abierto (puede ser el mismo que cerramos si no se guardó, u otro)
-            if not open_attendance or remaining_open.id != open_attendance.id:
-                _logger.warning(
-                    "Aún existe registro abierto después de cerrar el anterior para %s. "
-                    "Cerrando registro adicional con ID %s. Check_in: %s",
-                    self.employee_id.name,
-                    remaining_open.id,
-                    remaining_open.check_in
-                )
-                check_out_time_remaining = self.punch_time - timedelta(seconds=1) if self.punch_time > remaining_open.check_in else remaining_open.check_in + timedelta(seconds=1)
-                if check_out_time_remaining <= remaining_open.check_in:
-                    check_out_time_remaining = remaining_open.check_in + timedelta(seconds=1)
-                remaining_open.write({
-                    'check_out': check_out_time_remaining
-                })
-                self.env.flush_all()
         
         # Buscar el último registro de asistencia del empleado para el mismo día
         date_start = self.punch_time.replace(hour=0, minute=0, second=0, microsecond=0)

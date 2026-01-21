@@ -52,3 +52,5 @@ htmlcov/
 *.rej
 .tmp/
 
+# Cursor / Specstory
+.specstory/

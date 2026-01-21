@@ -17,12 +17,6 @@ class HrEmployee(models.Model):
         compute='_compute_extra_hours_request_count'
     )
     
-    branch_id = fields.Many2one(
-        'res.branch',
-        string='Sucursal',
-        help='Sucursal o ubicación del empleado'
-    )
-    
     extra_hours_tolerance = fields.Float(
         string='Tolerancia de Horas Extra (minutos)',
         default=15.0,

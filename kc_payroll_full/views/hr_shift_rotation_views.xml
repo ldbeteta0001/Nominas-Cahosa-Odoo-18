@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Vista de lista para rotación de turnos -->
+        <record id="view_shift_rotation_list" model="ir.ui.view">
+            <field name="name">hr.shift.rotation.list</field>
+            <field name="model">hr.shift.rotation</field>
+            <field name="arch" type="xml">
+                <list string="Rotaciones de Turnos">
+                    <field name="name"/>
+                    <field name="employee_count" string="Empleados"/>
+                    <field name="period_count" string="Períodos"/>
+                    <field name="state" widget="badge" 
+                           decoration-success="state == 'applied'"
+                           decoration-info="state == 'draft'"
+                           decoration-muted="state == 'cancelled'"/>
+                    <field name="date_created"/>
+                    <field name="created_by"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Vista de formulario para rotación de turnos -->
+        <record id="view_shift_rotation_form" model="ir.ui.view">
+            <field name="name">hr.shift.rotation.form</field>
+            <field name="model">hr.shift.rotation</field>
+            <field name="arch" type="xml">
+                <form string="Programar Rotación de Turnos">
+                    <header>
+                        <button name="action_preview"
+                                string="Vista Previa"
+                                type="object"
+                                class="btn-secondary"
+                                invisible="state != 'draft'"/>
+                        <button name="action_apply"
+                                string="Aplicar Rotación"
+                                type="object"
+                                class="oe_highlight"
+                                invisible="state != 'draft'"/>
+                        <button name="action_reset_to_draft"
+                                string="Resetear a Borrador"
+                                type="object"
+                                class="btn-secondary"
+                                invisible="state != 'applied'"/>
+                        <button name="action_cancel"
+                                string="Cancelar"
+                                type="object"
+                                class="btn-secondary"
+                                invisible="state in ['cancelled', 'applied']"/>
+                        <field name="state" widget="statusbar" statusbar_visible="draft,applied"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_button_box" name="button_box">
+                            <button name="action_view_assignments_calendar"
+                                    string="Ver Calendario"
+                                    type="object"
+                                    class="oe_stat_button"
+                                    icon="fa-calendar"
+                                    help="Ver calendario de asignaciones generadas por esta rotación"/>
+                        </div>
+                        <div class="oe_button_box" name="button_box">
+                            <button class="oe_stat_button" type="object" name="action_view_employees"
+                                    icon="fa-users">
+                                <field name="employee_count" widget="statinfo" string="Empleados"/>
+                            </button>
+                            <button class="oe_stat_button" type="object" name="action_view_periods"
+                                    icon="fa-calendar">
+                                <field name="period_count" widget="statinfo" string="Períodos"/>
+                            </button>
+                            <button class="oe_stat_button" type="object" name="action_view_assignments_calendar"
+                                    icon="fa-calendar-check-o"
+                                    invisible="state == 'draft'">
+                                <field name="assignment_count" widget="statinfo" string="Asignaciones"/>
+                            </button>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="name" required="1"/>
+                                <field name="date_created" readonly="1"/>
+                                <field name="created_by" readonly="1"/>
+                            </group>
+                        </group>
+
+                        <notebook>
+                            <page string="Empleados" name="employees_tab">
+                                <div class="alert alert-info" role="alert">
+                                    <p><strong>Nota:</strong> Selecciona los empleados a los que se les aplicará la rotación de turnos.</p>
+                                </div>
+                                <div class="oe_button_box" name="employee_search_button_box">
+                                    <button name="action_search_employees_without_shift"
+                                            type="object"
+                                            string="Buscar Empleados sin Turno"
+                                            class="btn-secondary"
+                                            icon="fa-search"
+                                            invisible="state != 'draft'"
+                                            help="Busca y selecciona empleados que no tienen turno actual asignado"/>
+                                    <button name="%(action_shift_assignment_import_wizard)d"
+                                            type="action"
+                                            string="Importar desde Excel"
+                                            class="btn-primary"
+                                            icon="fa-upload"
+                                            invisible="state != 'draft'"
+                                            help="Importar asignaciones de turnos desde un archivo Excel"/>
+                                </div>
+                                <field name="employee_ids" nolabel="1" options="{'no_create': True, 'no_create_edit': True}">
+                                    <list>
+                                        <field name="name"/>
+                                        <field name="barcode" optional="hide"/>
+                                        <field name="department_id"/>
+                                        <field name="job_id"/>
+                                        <field name="resource_calendar_id"/>
+                                        <field name="current_shift_period"
+                                               widget="badge"
+                                               optional="hide"
+                                               decoration-info="current_shift_period == 'dia'"
+                                               decoration-muted="current_shift_period == 'noche'"/>
+                                    </list>
+                                </field>
+                            </page>
+                            <page string="Períodos de Rotación" name="rotation_periods">
+                                <div class="alert alert-info" role="alert">
+                                    <p><strong>Nota:</strong> Define los períodos de rotación de turnos. Puedes agregar nuevos períodos y el sistema sugerirá las fechas y turnos automáticamente.</p>
+                                </div>
+                                <field name="rotation_line_ids" nolabel="1">
+                                    <list editable="bottom" string="Períodos de Rotación">
+                                        <field name="sequence" invisible="1"/>
+                                        <field name="shift_period" required="1"/>
+                                        <field name="date_from" required="1"/>
+                                        <field name="date_to" required="1"/>
+                                        <field name="weeks" readonly="1" string="Semanas"/>
+                                        <field name="reason"/>
+                                    </list>
+                                </field>
+
+                                <div class="oe_button_box" name="add_period_button_box">
+                                    <button name="action_add_period"
+                                            type="object"
+                                            string="Agregar Período"
+                                            class="oe_highlight"
+                                            icon="fa-plus"
+                                            invisible="state != 'draft'"/>
+                                </div>
+                            </page>
+                            <page string="Notas" name="notes_tab">
+                                <field name="notes" nolabel="1" placeholder="Notas adicionales sobre esta programación..."/>
+                            </page>
+                        </notebook>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Vista de búsqueda para rotación de turnos -->
+        <record id="view_shift_rotation_search" model="ir.ui.view">
+            <field name="name">hr.shift.rotation.search</field>
+            <field name="model">hr.shift.rotation</field>
+            <field name="arch" type="xml">
+                <search string="Rotaciones de Turnos">
+                    <field name="name"/>
+                    <field name="employee_ids"/>
+                    <filter string="Borrador" name="draft" domain="[('state', '=', 'draft')]"/>
+                    <filter string="Aplicado" name="applied" domain="[('state', '=', 'applied')]"/>
+                    <filter string="Cancelado" name="cancelled" domain="[('state', '=', 'cancelled')]"/>
+                    <group expand="0" string="Agrupar por">
+                        <filter string="Estado" name="group_state" context="{'group_by': 'state'}"/>
+                        <filter string="Creado por" name="group_created_by" context="{'group_by': 'created_by'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Acción para rotación de turnos -->
+        <record id="action_shift_rotation" model="ir.actions.act_window">
+            <field name="name">Programar Rotación de Turnos</field>
+            <field name="res_model">hr.shift.rotation</field>
+            <field name="view_mode">list,form</field>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    No hay rotaciones de turnos programadas
+                </p>
+                <p>
+                    Crea una nueva programación de rotación de turnos para asignar turnos día/noche a los empleados.
+                </p>
+            </field>
+        </record>
+
+
+        <!-- Vista personalizada para seleccionar empleados sin turno -->
+        <record id="view_employee_list_select_shift_rotation" model="ir.ui.view">
+            <field name="name">hr.employee.list.select.shift.rotation</field>
+            <field name="model">hr.employee</field>
+            <field name="arch" type="xml">
+                <list string="Empleados sin Turno">
+                    <field name="name"/>
+                    <field name="barcode" optional="hide"/>
+                    <field name="department_id"/>
+                    <field name="job_id"/>
+                    <field name="current_shift_period"
+                           widget="badge"
+                           optional="hide"
+                           decoration-info="current_shift_period == 'dia'"
+                           decoration-muted="current_shift_period == 'noche'"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Menú padre para gestión de turnos -->
+        <menuitem id="menu_shift_management"
+                  name="Turnos"
+                  parent="hr.menu_hr_root"
+                  sequence="30"/>
+
+        <!-- Menú para acceder a rotación de turnos -->
+        <menuitem id="menu_shift_rotation"
+                  name="Programar Rotación de Turnos"
+                  parent="menu_shift_management"
+                  action="action_shift_rotation"
+                  sequence="10"/>
+    </data>
+</odoo>

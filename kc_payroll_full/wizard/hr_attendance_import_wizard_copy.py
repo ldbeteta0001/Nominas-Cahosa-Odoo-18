@@ -3,7 +3,7 @@
 import base64
 import io
 import logging
-from datetime import datetime, timedelta, time, date
+from datetime import datetime, timedelta, time
 
 import pytz
 from openpyxl import load_workbook
@@ -233,7 +233,6 @@ class HrAttendanceImport(models.TransientModel):
     def _find_existing_partial_attendance(self, employee, work_date):
         """
         Busca asistencias parciales existentes para completar
-        (asistencias con check_in pero sin check_out)
         """
         day_start = datetime.combine(work_date, datetime.min.time())
         day_end = day_start + timedelta(days=1)
@@ -242,7 +241,8 @@ class HrAttendanceImport(models.TransientModel):
             ("employee_id", "=", employee.id),
             ("check_in", ">=", day_start.strftime("%Y-%m-%d %H:%M:%S")),
             ("check_in", "<", day_end.strftime("%Y-%m-%d %H:%M:%S")),
-            ("is_partial", "=", True)  # Asistencia parcial
+            ("is_partial", "=", True),
+            ("partial_type", "=", "entry_only")
         ], limit=1)
 
         return existing_partial
@@ -274,7 +274,7 @@ class HrAttendanceImport(models.TransientModel):
 
         _logger.info("    Buscando duplicados entre %s y %s", day_start_utc, day_end_utc)
 
-        # Buscar asistencias completas (con check_out)
+        # Buscar asistencias completas (no parciales)
         existing = self.env["hr.attendance"].search([
             ("employee_id", "=", employee.id),
             ("check_in", ">=", day_start_utc.strftime("%Y-%m-%d %H:%M:%S")),
@@ -515,20 +515,15 @@ class HrAttendanceImport(models.TransientModel):
             sheet = wb.active
 
             # 2) Parámetros de columnas
-            # Según el formato del Excel:
-            # Columna A (0): ID Biométrico del Empleado (employee_biometric_id)
-            # Columna D (3): Fecha
-            # Columna E (4): Hora
-            IDX_ID = 0  # Columna A (ID Biométrico del Empleado)
-            IDX_FECHA = 3  # Columna D (Fecha)
-            IDX_HORA = 4  # Columna E (Hora)
+            IDX_TIEMPO = 0  # Columna A
+            IDX_ID = 6  # Columna G (ID/barcode)
 
             # 3) Timezone del usuario
             user_tz = self.env.user.tz or self.env.context.get('tz') or 'UTC'
             local_tz = pytz.timezone(user_tz)
             utc_tz = pytz.utc
 
-            # 4) Recolectar todos los timestamps por empleado (biometric_id_int)
+            # 4) Recolectar todos los timestamps por empleado (barcode)
             attend_list = {}
             row_count = 0
             empty_rows = 0
@@ -541,96 +536,60 @@ class HrAttendanceImport(models.TransientModel):
                     continue  # salto encabezado
 
                 row_count += 1
+                raw = row[IDX_TIEMPO] if len(row) > IDX_TIEMPO else None
                 emp_id = row[IDX_ID] if len(row) > IDX_ID else None
-                raw_fecha = row[IDX_FECHA] if len(row) > IDX_FECHA else None
-                raw_hora = row[IDX_HORA] if len(row) > IDX_HORA else None
 
-                _logger.info("Fila %d: ID=%s, Fecha=%s, Hora=%s", idx, emp_id, raw_fecha, raw_hora)
+                _logger.info("Fila %d: Tiempo=%s, ID=%s", idx, raw, emp_id)
 
-                if not emp_id or not raw_fecha or not raw_hora:
+                if not raw or not emp_id:
                     empty_rows += 1
-                    _logger.warning("Fila %d omitida: ID=%s, Fecha=%s, Hora=%s", idx, emp_id, raw_fecha, raw_hora)
+                    _logger.warning("Fila %d omitida: Tiempo=%s, ID=%s", idx, raw, emp_id)
                     continue
 
-                # Combinar fecha y hora en un datetime
+                # parseo a datetime
                 try:
-                    # Parsear fecha
-                    if isinstance(raw_fecha, datetime):
-                        fecha = raw_fecha.date()
-                    elif isinstance(raw_fecha, str):
-                        # Intentar varios formatos de fecha
+                    if isinstance(raw, str):
                         try:
-                            fecha = datetime.strptime(raw_fecha, '%Y-%m-%d').date()
+                            tiempo = datetime.fromisoformat(raw)
+                            _logger.info("Tiempo parseado desde string: %s -> %s", raw,
+                                         tiempo)
                         except ValueError:
-                            try:
-                                fecha = datetime.strptime(raw_fecha, '%d/%m/%Y').date()
-                            except ValueError:
-                                fecha_dt = fields.Date.from_string(raw_fecha)
-                                fecha = fecha_dt if isinstance(fecha_dt, date) else fecha_dt.date()
+                            tiempo = fields.Datetime.from_string(raw)
+                            _logger.info("Tiempo parseado con Odoo: %s -> %s", raw,
+                                         tiempo)
                     else:
-                        # Si es un objeto date directamente
-                        fecha = raw_fecha if isinstance(raw_fecha, date) else raw_fecha.date()
-
-                    # Parsear hora
-                    if isinstance(raw_hora, time):
-                        hora_obj = raw_hora
-                    elif isinstance(raw_hora, datetime):
-                        hora_obj = raw_hora.time()
-                    elif isinstance(raw_hora, str):
-                        # Intentar varios formatos de hora
-                        try:
-                            hora_obj = datetime.strptime(raw_hora, '%H:%M:%S').time()
-                        except ValueError:
-                            try:
-                                hora_obj = datetime.strptime(raw_hora, '%H:%M').time()
-                            except ValueError:
-                                # Intentar parsear con Odoo
-                                hora_dt = fields.Datetime.from_string(f'2000-01-01 {raw_hora}')
-                                hora_obj = hora_dt.time()
-                    else:
-                        # Si es un número decimal (ej: 0.708333 = 17:00)
-                        if isinstance(raw_hora, (int, float)):
-                            hours = int(raw_hora * 24)
-                            minutes = int((raw_hora * 24 - hours) * 60)
-                            hora_obj = time(hours, minutes)
-                        else:
-                            raise ValueError(f"Formato de hora no reconocido: {type(raw_hora)}")
-
-                    # Combinar fecha y hora
-                    tiempo = datetime.combine(fecha, hora_obj)
-                    _logger.info("Tiempo combinado: Fecha=%s, Hora=%s -> %s", fecha, hora_obj, tiempo)
-
+                        tiempo = raw  # openpyxl ya lo entrega como datetime
+                        _logger.info("Tiempo ya es datetime: %s", tiempo)
                 except Exception as e:
-                    _logger.error("Error parseando fecha/hora en fila %d: Fecha=%s, Hora=%s - Error: %s",
-                                  idx, raw_fecha, raw_hora, str(e))
+                    _logger.error("Error parseando tiempo en fila %d: %s - Error: %s",
+                                  idx, raw, str(e))
                     error_count += 1
                     error_details.append({
-                        'tipo': 'Error parseando fecha/hora',
+                        'tipo': 'Error parseando fecha',
                         'fila': idx,
                         'empleado': emp_id,
-                        'fecha': raw_fecha,
-                        'hora': raw_hora,
+                        'tiempo': raw,
                         'error': str(e)
                     })
                     continue
 
-                biometric_id = str(emp_id).strip()
-                attend_list.setdefault(biometric_id, []).append(tiempo)
-                _logger.info("Agregado: ID Biométrico=%s, Tiempo=%s", biometric_id, tiempo)
+                barcode = str(emp_id).strip()
+                attend_list.setdefault(barcode, []).append(tiempo)
+                _logger.info("Agregado: Barcode=%s, Tiempo=%s", barcode, tiempo)
 
             _logger.info("=== RESUMEN LECTURA ===")
             _logger.info("Filas procesadas: %d", row_count)
             _logger.info("Filas vacías omitidas: %d", empty_rows)
             _logger.info("Empleados con marcas: %d", len(attend_list))
-            for biometric_id, times in attend_list.items():
-                _logger.info("ID Biométrico %s: %d marcas", biometric_id, len(times))
+            for barcode, times in attend_list.items():
+                _logger.info("Empleado %s: %d marcas", barcode, len(times))
 
             # 5) Para cada empleado, procesar marcas inteligentemente
             _logger.info("=== INICIANDO PROCESAMIENTO POR EMPLEADO ===")
 
-            for biometric_id, times in attend_list.items():
+            for barcode, times in attend_list.items():
                 try:
-                    _logger.info("\n--- Procesando empleado con ID Biométrico: %s ---", biometric_id)
+                    _logger.info("\n--- Procesando empleado: %s ---", barcode)
                     _logger.info("Marcas originales: %s", times)
 
                     # 5.1) ordenar
@@ -649,49 +608,32 @@ class HrAttendanceImport(models.TransientModel):
                     times_sorted = filtered
                     _logger.info("Marcas después de filtrar duplicados: %s", times_sorted)
 
-                    # Buscar empleado por ID biométrico (employee_biometric_id)
-                    # El valor del Excel debe ser convertido a entero para la búsqueda
-                    try:
-                        biometric_id_int = int(biometric_id) if isinstance(biometric_id, str) else int(biometric_id)
-                    except (ValueError, TypeError):
-                        _logger.error("ERROR: ID biométrico inválido '%s' (debe ser un número)",
-                                      biometric_id)
-                        error_count += 1
-                        error_details.append({
-                            'tipo': 'ID biométrico inválido',
-                            'empleado': biometric_id,
-                            'marcas': times,
-                            'error': f'El ID biométrico "{biometric_id}" no es un número válido'
-                        })
-                        continue
-                    
-                    emp = self.env["hr.employee"].search([("biometric_user_id", "=", biometric_id_int)],
+                    emp = self.env["hr.employee"].search([("biometric_user_id", "=", barcode)],
                                                          limit=1)
                     if not emp:
-                        _logger.error("ERROR: Empleado no encontrado para ID biométrico '%s'",
-                                      biometric_id_int)
+                        _logger.error("ERROR: Empleado no encontrado para barcode '%s'",
+                                      barcode)
                         error_count += 1
                         error_details.append({
                             'tipo': 'Empleado no encontrado',
-                            'empleado': biometric_id_int,
+                            'empleado': barcode,
                             'marcas': times,
-                            'error': f'No existe empleado con ID biométrico {biometric_id_int}'
+                            'error': f'No existe empleado con barcode {barcode}'
                         })
                         continue
 
-                    _logger.info("Empleado encontrado: %s (ID: %d, ID Biométrico: %s)", 
-                                 emp.name, emp.id, biometric_id_int)
+                    _logger.info("Empleado encontrado: %s (ID: %d)", emp.name, emp.id)
 
                     # PASO 1: Analizar horario del empleado
                     schedule_info = self._analyze_employee_schedule(emp)
                     if not schedule_info:
                         _logger.error(
-                            "ERROR: Empleado %s (ID Biométrico: %s) no tiene horario de trabajo asignado",
-                            emp.name, biometric_id_int)
+                            "ERROR: Empleado %s (barcode: %s) no tiene horario de trabajo asignado",
+                            emp.name, barcode)
                         error_count += 1
                         error_details.append({
                             'tipo': 'Sin horario de trabajo',
-                            'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                            'empleado': f'{emp.name} ({barcode})',
                             'marcas': times,
                             'error': 'Empleado no tiene horario de trabajo asignado'
                         })
@@ -744,7 +686,7 @@ class HrAttendanceImport(models.TransientModel):
                                 emp.name, work_date)
                             skipped_count += 1
                             skipped_details.append({
-                                'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                'empleado': f'{emp.name} ({barcode})',
                                 'fecha': work_date,
                                 'marcas': day_times,
                                 'motivo': 'Asistencia completa ya existe'
@@ -780,7 +722,9 @@ class HrAttendanceImport(models.TransientModel):
                                         utc_tz)
                                     existing_partial.write({
                                         'check_out': dt_out_utc.strftime(
-                                            "%Y-%m-%d %H:%M:%S")
+                                            "%Y-%m-%d %H:%M:%S"),
+                                        'is_partial': False,
+                                        'partial_type': 'complete'
                                     })
                                     _logger.info(
                                         "  ✓ Asistencia parcial completada (ID: %d)",
@@ -794,7 +738,7 @@ class HrAttendanceImport(models.TransientModel):
                                     error_count += 1
                                     error_details.append({
                                         'tipo': 'Error completando asistencia parcial',
-                                        'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                        'empleado': f'{emp.name} ({barcode})',
                                         'fecha': work_date,
                                         'salida': exit_time,
                                         'error': str(e)
@@ -805,7 +749,7 @@ class HrAttendanceImport(models.TransientModel):
                                     "  Asistencia parcial existente, pero no hay marcas de salida nuevas")
                                 skipped_count += 1
                                 skipped_details.append({
-                                    'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                    'empleado': f'{emp.name} ({barcode})',
                                     'fecha': work_date,
                                     'marcas': day_times,
                                     'motivo': 'Asistencia parcial existente sin nuevas salidas'
@@ -866,7 +810,9 @@ class HrAttendanceImport(models.TransientModel):
                                         "%Y-%m-%d %H:%M:%S"),
                                     "check_out": dt_out_utc.strftime("%Y-%m-%d %H:%M:%S"),
                                     "check_in_schedule": dt_in_utc.strftime(
-                                        "%Y-%m-%d %H:%M:%S")
+                                        "%Y-%m-%d %H:%M:%S"),
+                                    "is_partial": False,
+                                    "partial_type": "complete"
                                 }
 
                                 _logger.info("  Valores finales: IN=%s, OUT=%s, SCH=%s",
@@ -884,7 +830,7 @@ class HrAttendanceImport(models.TransientModel):
                                 error_count += 1
                                 error_details.append({
                                     'tipo': 'Error creando asistencia completa',
-                                    'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                    'empleado': f'{emp.name} ({barcode})',
                                     'fecha': work_date,
                                     'entrada': entry_time,
                                     'salida': exit_time,
@@ -925,8 +871,10 @@ class HrAttendanceImport(models.TransientModel):
                                     "check_in": real_check_in_utc.strftime(
                                         "%Y-%m-%d %H:%M:%S"),
                                     "check_in_schedule": dt_in_utc.strftime(
-                                        "%Y-%m-%d %H:%M:%S")
-                                    # check_out se deja en blanco intencionalmente (asistencia parcial)
+                                        "%Y-%m-%d %H:%M:%S"),
+                                    "is_partial": True,
+                                    "partial_type": "entry_only"
+                                    # check_out se deja en blanco intencionalmente
                                 }
 
                                 new_attendance = self.env["hr.attendance"].create(
@@ -942,7 +890,7 @@ class HrAttendanceImport(models.TransientModel):
                                 error_count += 1
                                 error_details.append({
                                     'tipo': 'Error creando asistencia parcial',
-                                    'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                    'empleado': f'{emp.name} ({barcode})',
                                     'fecha': work_date,
                                     'entrada': entry_time,
                                     'error': str(e)
@@ -984,7 +932,9 @@ class HrAttendanceImport(models.TransientModel):
                                         "check_in_schedule": dt_in_utc.strftime(
                                             "%Y-%m-%d %H:%M:%S"),
                                         "check_out": dt_out_utc.strftime(
-                                            "%Y-%m-%d %H:%M:%S")
+                                            "%Y-%m-%d %H:%M:%S"),
+                                        "is_partial": True,
+                                        "partial_type": "exit_only"
                                     }
 
                                     new_attendance = self.env["hr.attendance"].create(
@@ -1001,7 +951,7 @@ class HrAttendanceImport(models.TransientModel):
                                     error_count += 1
                                     error_details.append({
                                         'tipo': 'Error creando asistencia parcial (solo salida)',
-                                        'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                        'empleado': f'{emp.name} ({barcode})',
                                         'fecha': work_date,
                                         'salida': exit_time,
                                         'error': str(e)
@@ -1015,7 +965,7 @@ class HrAttendanceImport(models.TransientModel):
                                 error_count += 1
                                 error_details.append({
                                     'tipo': 'No se pudo calcular entrada teórica',
-                                    'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                    'empleado': f'{emp.name} ({barcode})',
                                     'fecha': work_date,
                                     'salida': exit_time,
                                     'error': 'No se encontró horario válido para calcular entrada teórica'
@@ -1034,7 +984,7 @@ class HrAttendanceImport(models.TransientModel):
                             error_count += 1
                             error_details.append({
                                 'tipo': error_type,
-                                'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                'empleado': f'{emp.name} ({barcode})',
                                 'fecha': work_date,
                                 'marcas': day_times,
                                 'clasificacion': classified_marks,
@@ -1043,12 +993,12 @@ class HrAttendanceImport(models.TransientModel):
                             continue
 
                 except Exception as e:
-                    _logger.error("ERROR general procesando empleado con ID Biométrico %s: %s", biometric_id,
+                    _logger.error("ERROR general procesando empleado %s: %s", barcode,
                                   str(e))
                     error_count += 1
                     error_details.append({
                         'tipo': 'Error general procesando empleado',
-                        'empleado': f'ID Biométrico: {biometric_id}',
+                        'empleado': barcode,
                         'marcas': times if 'times' in locals() else 'No disponibles',
                         'error': str(e)
                     })

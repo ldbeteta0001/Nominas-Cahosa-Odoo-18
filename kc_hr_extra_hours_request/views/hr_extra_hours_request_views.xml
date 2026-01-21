@@ -71,7 +71,6 @@
                                 <field name="manager_id" readonly="1"/>
                                 <field name="company_id" readonly="1"/>
                                 <field name="department_id" readonly="1"/>
-                                <field name="branch_id" readonly="1"/>
                             </group>
                             <group name="request_info">
                                 <field name="date" readonly="state != 'draft'"/>
@@ -113,6 +112,11 @@
                                 <field name="hours_75" readonly="1" widget="float" 
                                        options="{'precision': 2}" 
                                        class="text-danger"/>
+                            </group>
+                            <group name="hours_100_group" string="Horas Domingo (100%)">
+                                <field name="hours_100" readonly="1" widget="float" 
+                                       options="{'precision': 2}" 
+                                       class="text-primary"/>
                             </group>
                         </group>
                         <group name="justification">
