@@ -1075,12 +1075,41 @@ class HrAttendance(models.Model):
             else:
                 # Turno diurno: calcular horas extra por rangos
                 _logger.info("_compute_overtime_hours: Procesando turno diurno")
-                if record.check_out_difference > 0:
-                    # Hay salida tardía, calcular horas extra
-                    _logger.info("_compute_overtime_hours: Diferencia salida: %.2f horas", record.check_out_difference)
-                    hours_25, hours_50, hours_75 = record._calculate_overtime_hours_by_ranges(
-                        record.check_out_difference
+                
+                # Verificar si este horario debe calcular horas extra
+                # Solo los horarios de 52 y 60 horas diurnos calculan extras
+                calendar = record.employee_id.resource_calendar_id
+                should_calculate_overtime = False
+                
+                if calendar:
+                    calendar_name = calendar.name or ''
+                    # Verificar si el nombre contiene "52" o "60" (horarios que calculan extras)
+                    if '52' in calendar_name or '60' in calendar_name:
+                        should_calculate_overtime = True
+                        _logger.info("_compute_overtime_hours: Horario '%s' debe calcular horas extra", calendar_name)
+                    else:
+                        _logger.info("_compute_overtime_hours: Horario '%s' NO calcula horas extra (solo 52 y 60 horas)", calendar_name)
+                
+                if should_calculate_overtime and record.check_out and record.check_out_schedule:
+                    user_tz = pytz.timezone(self.env.user.tz or 'UTC')
+                    check_out_utc = record.check_out.replace(tzinfo=pytz.UTC)
+                    check_out_local = check_out_utc.astimezone(user_tz)
+                    check_out_schedule_utc = record.check_out_schedule.replace(tzinfo=pytz.UTC)
+                    check_out_schedule_local = check_out_schedule_utc.astimezone(user_tz)
+                    
+                    actual_hour = check_out_local.hour + (check_out_local.minute / 60.0)
+                    schedule_hour = check_out_schedule_local.hour + (check_out_schedule_local.minute / 60.0)
+                    
+                    _logger.info("_compute_overtime_hours: Salida programada: %.2f, Salida real: %.2f", 
+                                schedule_hour, actual_hour)
+                    
+                    # Calcular horas extra basándose en las horas trabajadas dentro de los rangos
+                    # Para turnos diurnos de 52/60 horas, calcular horas trabajadas dentro de los rangos
+                    # desde el inicio del rango hasta la salida real (o desde salida programada si es tardía)
+                    hours_25, hours_50, hours_75 = record._calculate_overtime_hours_by_ranges_for_day_shift(
+                        actual_hour, schedule_hour
                     )
+                    
                     _logger.info("_compute_overtime_hours: Horas extra por rangos - HE25: %.2f, HE50: %.2f, HE75: %.2f",
                                 hours_25, hours_50, hours_75)
 
@@ -1112,6 +1141,11 @@ class HrAttendance(models.Model):
                     record.hours_25 = hours_25
                     record.hours_50 = hours_50
                     record.hours_75 = hours_75
+                else:
+                    # Si no debe calcular extras o no hay check_out/check_out_schedule, no hay horas extra
+                    record.hours_25 = 0.0
+                    record.hours_50 = 0.0
+                    record.hours_75 = 0.0
 
                 # Si hay entrada temprana y está marcado para contar como HE
                 if record.check_in_difference < 0 and record.count_early_check_in_overtime:
@@ -1129,7 +1163,13 @@ class HrAttendance(models.Model):
                         record.hours_25, record.hours_50, record.hours_75, record.sunday_hours)
 
     def _calculate_overtime_hours_by_ranges(self, extra_hours):
-        """Calcular horas extra según rangos configurados"""
+        """
+        Calcular horas extra según rangos configurados para turnos diurnos
+        Distribuye las horas extra según los rangos desde la salida programada hasta la salida real:
+        - HE25: desde hour_25_from hasta hour_25_to (ej: 16:30 a 19:00)
+        - HE50: desde hour_50_from hasta hour_50_to (ej: 19:00 a 22:00)
+        - HE75: desde hour_75_from hasta hour_75_to (ej: 22:00 a 05:00, puede cruzar medianoche)
+        """
         # Obtener configuración de rangos
         try:
             config = self.env['config.overtime.hours'].search([
@@ -1146,34 +1186,197 @@ class HrAttendance(models.Model):
         hours_50 = 0.0
         hours_75 = 0.0
         
-        # Obtener hora actual para determinar en qué rango estamos
-        if self.check_out:
-            user_tz = pytz.timezone(self.env.user.tz or 'UTC')
-            check_out_utc = self.check_out.replace(tzinfo=pytz.UTC)
-            check_out_local = check_out_utc.astimezone(user_tz)
-            current_hour = check_out_local.hour + (check_out_local.minute / 60.0)
-
-            # Calcular horas en cada rango
-            hour_25_from = float(config.hour_25_from)
-            hour_25_to = float(config.hour_25_to)
-            hour_50_from = float(config.hour_50_from)
-            hour_50_to = float(config.hour_50_to)
-            hour_75_from = float(config.hour_75_from)
-            hour_75_to = float(config.hour_75_to)
+        if not self.check_out or not self.check_out_schedule:
+            # Si no hay check_out o check_out_schedule, todo como HE25
+            return (extra_hours, 0.0, 0.0)
+        
+        user_tz = pytz.timezone(self.env.user.tz or 'UTC')
+        check_out_utc = self.check_out.replace(tzinfo=pytz.UTC)
+        check_out_local = check_out_utc.astimezone(user_tz)
+        
+        # Obtener hora de salida programada
+        check_out_schedule_utc = self.check_out_schedule.replace(tzinfo=pytz.UTC)
+        check_out_schedule_local = check_out_schedule_utc.astimezone(user_tz)
+        
+        # Obtener rangos de configuración
+        hour_25_from = float(config.hour_25_from)  # Ej: 16.5 = 16:30
+        hour_25_to = float(config.hour_25_to)      # Ej: 19.0 = 19:00
+        hour_50_from = float(config.hour_50_from)  # Ej: 19.0 = 19:00
+        hour_50_to = float(config.hour_50_to)      # Ej: 22.0 = 22:00
+        hour_75_from = float(config.hour_75_from)  # Ej: 22.0 = 22:00
+        hour_75_to = float(config.hour_75_to)      # Ej: 5.0 = 05:00 del día siguiente
+        
+        # Hora de salida programada y real en formato decimal
+        schedule_hour = check_out_schedule_local.hour + (check_out_schedule_local.minute / 60.0)
+        actual_hour = check_out_local.hour + (check_out_local.minute / 60.0)
+        actual_date = check_out_local.date()
+        
+        _logger.info("_calculate_overtime_hours_by_ranges: Salida programada: %s (%.2f), Salida real: %s (%.2f), Horas extra: %.2f",
+                    check_out_schedule_local, schedule_hour, check_out_local, actual_hour, extra_hours)
+        
+        # Calcular horas en cada rango desde la salida programada hasta la salida real
+        # Rango HE25: desde hour_25_from hasta hour_25_to
+        if schedule_hour < hour_25_to and actual_hour > hour_25_from:
+            # La salida programada está antes del fin del rango HE25 y la salida real está después del inicio
+            start_he25 = max(schedule_hour, hour_25_from)
+            end_he25 = min(actual_hour, hour_25_to)
+            if end_he25 > start_he25:
+                hours_25 = end_he25 - start_he25
+                _logger.info("_calculate_overtime_hours_by_ranges: HE25: %.2f horas (%.2f - %.2f)", 
+                            hours_25, start_he25, end_he25)
+        
+        # Rango HE50: desde hour_50_from hasta hour_50_to
+        if actual_hour > hour_50_from:
+            # La salida real está después del inicio del rango HE50
+            start_he50 = max(schedule_hour, hour_50_from, hour_25_to)
+            end_he50 = min(actual_hour, hour_50_to)
+            if end_he50 > start_he50:
+                hours_50 = end_he50 - start_he50
+                _logger.info("_calculate_overtime_hours_by_ranges: HE50: %.2f horas (%.2f - %.2f)", 
+                            hours_50, start_he50, end_he50)
+        
+        # Rango HE75: desde hour_75_from hasta hour_75_to (puede cruzar medianoche)
+        if hour_75_to < hour_75_from:  # Cruza medianoche (ej: 22:00 a 05:00)
+            # Caso 1: La salida real está antes de medianoche (mismo día)
+            if actual_hour >= hour_75_from:
+                start_he75 = max(schedule_hour, hour_75_from, hour_50_to)
+                end_he75 = min(actual_hour, 24.0)
+                if end_he75 > start_he75:
+                    hours_75 = end_he75 - start_he75
+                    _logger.info("_calculate_overtime_hours_by_ranges: HE75 (mismo día): %.2f horas (%.2f - %.2f)", 
+                                hours_75, start_he75, end_he75)
             
-            # Distribuir las horas extra según el rango
-            if hour_25_from <= current_hour < hour_25_to:
-                hours_25 = extra_hours
-            elif hour_50_from <= current_hour < hour_50_to:
-                hours_50 = extra_hours
-            elif hour_75_from <= current_hour < hour_75_to or (hour_75_to < hour_75_from and current_hour >= hour_75_from):
-                hours_75 = extra_hours
-            else:
-                # Por defecto, HE25
-                hours_25 = extra_hours
+            # Caso 2: La salida real está después de medianoche (día siguiente)
+            if actual_hour < hour_75_to:
+                # Horas desde medianoche hasta la salida real
+                hours_75 += min(actual_hour, hour_75_to)
+                _logger.info("_calculate_overtime_hours_by_ranges: HE75 (día siguiente): %.2f horas (00:00 - %.2f)", 
+                            min(actual_hour, hour_75_to), actual_hour)
         else:
-            # Si no hay check_out, todo como HE25
-            hours_25 = extra_hours
+            # No cruza medianoche
+            if actual_hour > hour_75_from:
+                start_he75 = max(schedule_hour, hour_75_from, hour_50_to)
+                end_he75 = min(actual_hour, hour_75_to)
+                if end_he75 > start_he75:
+                    hours_75 = end_he75 - start_he75
+                    _logger.info("_calculate_overtime_hours_by_ranges: HE75: %.2f horas (%.2f - %.2f)", 
+                                hours_75, start_he75, end_he75)
+        
+        # Asegurar que la suma no exceda las horas extra totales
+        total_calculated = hours_25 + hours_50 + hours_75
+        if total_calculated > extra_hours:
+            # Proporcionalmente reducir cada rango
+            factor = extra_hours / total_calculated
+            hours_25 *= factor
+            hours_50 *= factor
+            hours_75 *= factor
+            _logger.info("_calculate_overtime_hours_by_ranges: Ajuste proporcional aplicado (factor: %.2f)", factor)
+        elif total_calculated < extra_hours:
+            # Si hay horas sin asignar, agregarlas al último rango usado
+            remaining = extra_hours - total_calculated
+            if hours_75 > 0:
+                hours_75 += remaining
+            elif hours_50 > 0:
+                hours_50 += remaining
+            else:
+                hours_25 += remaining
+            _logger.info("_calculate_overtime_hours_by_ranges: Horas restantes (%.2f) agregadas al último rango", remaining)
+        
+        _logger.info("_calculate_overtime_hours_by_ranges: RESULTADO - HE25: %.2f, HE50: %.2f, HE75: %.2f (Total: %.2f)", 
+                    hours_25, hours_50, hours_75, hours_25 + hours_50 + hours_75)
+        
+        return (hours_25, hours_50, hours_75)
+    
+    def _calculate_overtime_hours_by_ranges_for_day_shift(self, actual_hour, schedule_hour):
+        """
+        Calcular horas extra para turnos diurnos de 52/60 horas
+        Calcula las horas trabajadas dentro de los rangos configurados:
+        - Si la salida es tardía: desde salida programada hasta salida real
+        - Si la salida es temprana o puntual: desde inicio del rango hasta salida real
+        """
+        # Obtener configuración de rangos
+        try:
+            config = self.env['config.overtime.hours'].search([
+                ('state', '=', 'active')
+            ], limit=1)
+        except Exception:
+            return (0.0, 0.0, 0.0)
+        
+        if not config:
+            return (0.0, 0.0, 0.0)
+
+        hours_25 = 0.0
+        hours_50 = 0.0
+        hours_75 = 0.0
+        
+        # Obtener rangos de configuración
+        hour_25_from = float(config.hour_25_from)  # Ej: 16.5 = 16:30
+        hour_25_to = float(config.hour_25_to)      # Ej: 19.0 = 19:00
+        hour_50_from = float(config.hour_50_from)  # Ej: 19.0 = 19:00
+        hour_50_to = float(config.hour_50_to)      # Ej: 22.0 = 22:00
+        hour_75_from = float(config.hour_75_from)  # Ej: 22.0 = 22:00
+        hour_75_to = float(config.hour_75_to)      # Ej: 5.0 = 05:00 del día siguiente
+        
+        _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: Salida programada: %.2f, Salida real: %.2f", 
+                    schedule_hour, actual_hour)
+        
+        # Determinar el punto de inicio para calcular horas extra
+        # Si la salida es tardía, empezar desde la salida programada
+        # Si la salida es temprana o puntual, empezar desde el inicio del rango HE25
+        if actual_hour > schedule_hour:
+            # Salida tardía: calcular desde salida programada hasta salida real
+            start_point = schedule_hour
+            _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: Salida tardía, calculando desde %.2f hasta %.2f", 
+                        start_point, actual_hour)
+        else:
+            # Salida temprana o puntual: calcular desde inicio del rango HE25 hasta salida real
+            start_point = hour_25_from
+            _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: Salida temprana/puntual, calculando desde %.2f hasta %.2f", 
+                        start_point, actual_hour)
+        
+        # Calcular horas trabajadas dentro de cada rango
+        # Rango HE25: desde hour_25_from hasta hour_25_to
+        if actual_hour > hour_25_from:
+            start_he25 = max(start_point, hour_25_from)
+            end_he25 = min(actual_hour, hour_25_to)
+            if end_he25 > start_he25:
+                hours_25 = end_he25 - start_he25
+                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE25: %.2f horas (%.2f - %.2f)", 
+                            hours_25, start_he25, end_he25)
+        
+        # Rango HE50: desde hour_50_from hasta hour_50_to
+        if actual_hour > hour_50_from:
+            start_he50 = max(start_point, hour_50_from, hour_25_to)
+            end_he50 = min(actual_hour, hour_50_to)
+            if end_he50 > start_he50:
+                hours_50 = end_he50 - start_he50
+                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE50: %.2f horas (%.2f - %.2f)", 
+                            hours_50, start_he50, end_he50)
+        
+        # Rango HE75: desde hour_75_from hasta hour_75_to (puede cruzar medianoche)
+        if hour_75_to < hour_75_from:  # Cruza medianoche
+            if actual_hour >= hour_75_from:
+                # Salida en el mismo día, después de hour_75_from
+                start_he75 = max(start_point, hour_75_from, hour_50_to)
+                end_he75 = min(actual_hour, 24.0)
+                if end_he75 > start_he75:
+                    hours_75 = end_he75 - start_he75
+                    _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75 (mismo día): %.2f horas", hours_75)
+            elif actual_hour < hour_75_to:
+                # Salida en el día siguiente, antes de hour_75_to
+                hours_75 = actual_hour
+                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75 (día siguiente): %.2f horas", hours_75)
+        else:
+            # No cruza medianoche
+            if actual_hour > hour_75_from:
+                start_he75 = max(start_point, hour_75_from, hour_50_to)
+                end_he75 = min(actual_hour, hour_75_to)
+                if end_he75 > start_he75:
+                    hours_75 = end_he75 - start_he75
+                    _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75: %.2f horas", hours_75)
+        
+        _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: RESULTADO - HE25: %.2f, HE50: %.2f, HE75: %.2f", 
+                    hours_25, hours_50, hours_75)
         
         return (hours_25, hours_50, hours_75)
 
