@@ -10,6 +10,7 @@
                 <field name="last_schedule_change" string="Último cambio"/>
             </xpath>
 
+
             <xpath expr="//page[@name='hr_settings']" position="after">
                 <page string="Historial de horarios" name="schedule_history">
                     <field name="schedule_history_ids">
@@ -35,6 +36,30 @@
                                     invisible="is_current == True"
                                     confirm="¿Crear nuevo desde hoy?"
                                     help="Crear nuevo registro desde hoy"/>
+                        </list>
+                    </field>
+                </page>
+                
+                <!-- Agregar pestaña de historial de turnos -->
+                <page string="Historial de Turnos" name="shift_history">
+                    <button name="action_create_shift_exception" 
+                            string="Registrar Excepción" 
+                            type="object"
+                            class="btn-primary"
+                            icon="fa-plus"
+                            invisible="not id"
+                            context="{'default_employee_id': id}"/>
+                    <field name="shift_history_ids" nolabel="1">
+                        <list>
+                            <field name="shift_period"
+                                   widget="badge"
+                                   decoration-info="shift_period == 'dia'"
+                                   decoration-muted="shift_period == 'noche'"/>
+                            <field name="date_from"/>
+                            <field name="date_to"/>
+                            <field name="is_current" widget="boolean_toggle"/>
+                            <field name="changed_by"/>
+                            <field name="reason" optional="hide"/>
                         </list>
                     </field>
                 </page>

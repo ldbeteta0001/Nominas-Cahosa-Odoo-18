@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Vista heredada de hr.employee para agregar campos de turno -->
+        <record id="view_hr_employee_form_inherit_shift" model="ir.ui.view">
+            <field name="name">hr.employee.form.inherit.shift</field>
+            <field name="model">hr.employee</field>
+            <field name="inherit_id" ref="hr.view_employee_form"/>
+            <field name="arch" type="xml">
+                <!-- Agregar campos de turno después del campo resource_calendar_id dentro del grupo Schedule -->
+                <xpath expr="//field[@name='resource_calendar_id']" position="after">
+                    <field name="current_shift_period"
+                           string="Turno Actual (Historial)"
+                           readonly="1"
+                           widget="badge"
+                           decoration-info="current_shift_period == 'dia'"
+                           decoration-muted="current_shift_period == 'noche'"
+                           help="Turno actual del empleado basado en el historial de turnos. Día (06:00-18:00) o Noche (18:00-06:00)"/>
+                    <field name="contract_current_shift_period"
+                           string="Turno Actual (Contrato)"
+                           readonly="1"
+                           widget="badge"
+                           decoration-info="contract_current_shift_period == 'dia'"
+                           decoration-muted="contract_current_shift_period == 'noche'"
+                           help="Turno actual del empleado desde el contrato activo"/>
+                    <field name="last_shift_change"
+                           string="Último Cambio de Turno"
+                           readonly="1"/>
+                </xpath>
+            </field>
+        </record>
+
+        <!-- Vista de lista heredada para agregar columna de turno -->
+        <record id="view_hr_employee_list_inherit_shift" model="ir.ui.view">
+            <field name="name">hr.employee.list.inherit.shift</field>
+            <field name="model">hr.employee</field>
+            <field name="inherit_id" ref="hr.view_employee_tree"/>
+            <field name="arch" type="xml">
+                <xpath expr="//field[@name='job_id']" position="after">
+                    <field name="current_shift_period"
+                           widget="badge"
+                           optional="hide"
+                           decoration-info="current_shift_period == 'dia'"
+                           decoration-muted="current_shift_period == 'noche'"/>
+                </xpath>
+            </field>
+        </record>
+    </data>
+</odoo>

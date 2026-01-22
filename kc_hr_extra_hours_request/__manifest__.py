@@ -23,7 +23,6 @@
         'portal',
         'website',
         'web',
-        'branch',
     ],
     'data': [
         'security/hr_extra_hours_security.xml',

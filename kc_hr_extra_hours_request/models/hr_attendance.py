@@ -86,13 +86,25 @@ class HrAttendance(models.Model):
     @api.depends('extra_hours_request_id')
     def _compute_has_extra_hours_request(self):
         for attendance in self:
-            attendance.has_extra_hours_request = bool(attendance.extra_hours_request_id)
+            try:
+                if 'hr.extra.hours.request' in self.env:
+                    attendance.has_extra_hours_request = bool(attendance.extra_hours_request_id)
+                else:
+                    attendance.has_extra_hours_request = False
+            except (KeyError, AttributeError):
+                attendance.has_extra_hours_request = False
     
     @api.depends('extra_hours_request_id')
     def _compute_extra_hours_request(self):
         """Obtener el primer registro de la solicitud de horas extra"""
         for attendance in self:
-            attendance.extra_hours_request = attendance.extra_hours_request_id[:1] if attendance.extra_hours_request_id else False
+            try:
+                if 'hr.extra.hours.request' in self.env:
+                    attendance.extra_hours_request = attendance.extra_hours_request_id[:1] if attendance.extra_hours_request_id else False
+                else:
+                    attendance.extra_hours_request = False
+            except (KeyError, AttributeError):
+                attendance.extra_hours_request = False
     
     @api.depends('hours_25', 'hours_50', 'hours_75')
     def _compute_total_extra_hours(self):
@@ -126,13 +138,20 @@ class HrAttendance(models.Model):
         """Detectar si hay horas extra y crear solicitud automática"""
         self.ensure_one()
         
+        # Verificar si el modelo está disponible
+        if 'hr.extra.hours.request' not in self.env:
+            return
+        
         if not self.employee_id or not self.check_in or not self.check_out:
             return
         
         # Verificar si ya existe una solicitud para esta asistencia
-        existing_request = self.env['hr.extra.hours.request'].search([
-            ('attendance_id', '=', self.id)
-        ], limit=1)
+        try:
+            existing_request = self.env['hr.extra.hours.request'].search([
+                ('attendance_id', '=', self.id)
+            ], limit=1)
+        except (KeyError, AttributeError):
+            return
         
         if existing_request:
             return
@@ -533,7 +552,11 @@ class HrAttendance(models.Model):
             'state': 'to_approve'
         }
         
-        request = self.env['hr.extra.hours.request'].create(request_vals)
+        try:
+            request = self.env['hr.extra.hours.request'].create(request_vals)
+        except (KeyError, AttributeError):
+            # El modelo no está disponible, no crear solicitud
+            return
         
         # Crear actividad para el jefe
         if request.manager_id and request.manager_id.user_id:

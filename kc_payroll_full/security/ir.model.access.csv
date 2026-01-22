@@ -11,3 +11,11 @@ access_change_work_schedule_wizard_manager,hr.change.work.schedule.wizard.manage
 access_attendance_report_wizard_manager,attendance.report.wizard.manager,model_attendance_report_wizard,hr.group_hr_manager,1,1,1,1
 access_config_overtime_hours_manager,config.overtime.hours.manager,model_config_overtime_hours,hr.group_hr_manager,1,1,1,1
 access_config_overtime_hours_user,config.overtime.hours.user,model_config_overtime_hours,base.group_user,1,0,0,0
+access_hr_employee_shift_history_manager,hr.employee.shift.history.manager,kc_payroll_full.model_hr_employee_shift_history,hr.group_hr_manager,1,1,1,1
+access_hr_employee_shift_history_user,hr.employee.shift.history.user,kc_payroll_full.model_hr_employee_shift_history,base.group_user,1,1,1,1
+access_hr_employee_shift_assignment_manager,hr.employee.shift.assignment.manager,kc_payroll_full.model_hr_employee_shift_assignment,hr.group_hr_manager,1,1,1,1
+access_hr_employee_shift_assignment_user,hr.employee.shift.assignment.user,kc_payroll_full.model_hr_employee_shift_assignment,base.group_user,1,1,1,1
+access_hr_shift_rotation_manager,hr.shift.rotation.manager,kc_payroll_full.model_hr_shift_rotation,hr.group_hr_manager,1,1,1,1
+access_hr_shift_rotation_user,hr.shift.rotation.user,kc_payroll_full.model_hr_shift_rotation,base.group_user,1,1,1,1
+access_hr_shift_rotation_line_manager,hr.shift.rotation.line.manager,kc_payroll_full.model_hr_shift_rotation_line,hr.group_hr_manager,1,1,1,1
+access_hr_shift_rotation_line_user,hr.shift.rotation.line.user,kc_payroll_full.model_hr_shift_rotation_line,base.group_user,1,1,1,1

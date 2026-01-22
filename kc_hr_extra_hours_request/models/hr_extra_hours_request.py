@@ -198,14 +198,6 @@ class HrExtraHoursRequest(models.Model):
         readonly=True
     )
     
-    branch_id = fields.Many2one(
-        'res.branch',
-        string='Sucursal',
-        related='employee_id.branch_id',
-        store=True,
-        readonly=True
-    )
-    
     # Campos calculados para reportes
     month = fields.Char(
         string='Mes',

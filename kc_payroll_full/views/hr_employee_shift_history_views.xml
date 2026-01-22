@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Vista de lista para historial de turnos -->
+        <record id="view_shift_history_list" model="ir.ui.view">
+            <field name="name">hr.employee.shift.history.list</field>
+            <field name="model">hr.employee.shift.history</field>
+            <field name="arch" type="xml">
+                <list string="Historial de Turnos">
+                    <button name="action_open_exception_form" 
+                            string="Registrar Excepción" 
+                            type="object" 
+                            class="btn-primary"
+                            icon="fa-plus"
+                            help="Registrar una excepción de turno que ajustará automáticamente los períodos existentes"/>
+                    <field name="employee_id"/>
+                    <field name="shift_period"
+                           widget="badge"
+                           decoration-info="shift_period == 'dia'"
+                           decoration-muted="shift_period == 'noche'"/>
+                    <field name="date_from"/>
+                    <field name="date_to"/>
+                    <field name="is_current" widget="boolean_toggle"/>
+                    <field name="changed_by"/>
+                    <field name="reason" optional="hide"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Vista de formulario para historial de turnos -->
+        <record id="view_shift_history_form" model="ir.ui.view">
+            <field name="name">hr.employee.shift.history.form</field>
+            <field name="model">hr.employee.shift.history</field>
+            <field name="arch" type="xml">
+                <form string="Historial de Turno">
+                    <header>
+                        <button name="action_open_exception_form" 
+                                string="Registrar Excepción" 
+                                type="object" 
+                                class="btn-primary"
+                                icon="fa-plus"
+                                invisible="context.get('create_exception_mode')"
+                                help="Abre un formulario para registrar una excepción de turno que ajustará automáticamente los períodos existentes"/>
+                    </header>
+                    <sheet>
+                        <div class="oe_button_box" name="button_box" invisible="not employee_id">
+                            <button name="%(action_shift_history)d" 
+                                    string="Ver Historial" 
+                                    type="action"
+                                    class="oe_stat_button" 
+                                    icon="fa-history"
+                                    context="{'search_default_employee_id': employee_id.id}"
+                                    invisible="not employee_id"/>
+                        </div>
+                        <group>
+                            <group>
+                                <field name="employee_id" 
+                                       options="{'no_create': True}"
+                                       readonly="context.get('create_exception_mode')"/>
+                                <field name="shift_period"
+                                       widget="radio"
+                                       options="{'horizontal': true}"
+                                       required="1"/>
+                            </group>
+                            <group>
+                                <field name="date_from" required="1"/>
+                                <field name="date_to" 
+                                       readonly="is_current"/>
+                                <field name="is_current" readonly="1"/>
+                                <field name="changed_by" readonly="1"/>
+                            </group>
+                        </group>
+                        <group string="Información del Cambio">
+                            <field name="reason" 
+                                   placeholder="Razón del cambio de turno o excepción... Ej: Empleado trabajó de noche esta semana por necesidad operativa"
+                                   required="not id"/>
+                        </group>
+                        <group invisible="not context.get('create_exception_mode')" string="Información">
+                            <div class="alert alert-info" role="alert">
+                                <strong>Nota:</strong> Este registro ajustará automáticamente los períodos de turno existentes que se solapen con las fechas especificadas.
+                            </div>
+                        </group>
+                    </sheet>
+                    <footer invisible="not context.get('create_exception_mode')">
+                        <button string="Registrar Excepción" 
+                                type="object" 
+                                name="action_confirm_exception" 
+                                class="btn-primary"
+                                confirm="¿Desea registrar esta excepción? Se ajustarán automáticamente los períodos existentes."/>
+                        <button string="Cancelar" 
+                                class="btn-secondary" 
+                                special="cancel"/>
+                    </footer>
+                </form>
+            </field>
+        </record>
+
+        <!-- Vista de búsqueda para historial de turnos -->
+        <record id="view_shift_history_search" model="ir.ui.view">
+            <field name="name">hr.employee.shift.history.search</field>
+            <field name="model">hr.employee.shift.history</field>
+            <field name="arch" type="xml">
+                <search string="Historial de Turnos">
+                    <field name="employee_id"/>
+                    <field name="shift_period"/>
+                    <field name="date_from"/>
+                    <filter string="Turnos Actuales" name="current" domain="[('is_current', '=', True)]"/>
+                    <filter string="Turno Día" name="day_shift" domain="[('shift_period', '=', 'dia')]"/>
+                    <filter string="Turno Noche" name="night_shift" domain="[('shift_period', '=', 'noche')]"/>
+                    <group expand="0" string="Agrupar por">
+                        <filter string="Empleado" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                        <filter string="Turno" name="group_shift" context="{'group_by': 'shift_period'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Acción para historial de turnos -->
+        <record id="action_shift_history" model="ir.actions.act_window">
+            <field name="name">Historial de Turnos</field>
+            <field name="res_model">hr.employee.shift.history</field>
+            <field name="view_mode">list,form</field>
+            <field name="domain">[]</field>
+            <field name="context">{}</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    No hay historial de turnos registrado
+                </p>
+                <p>
+                    El historial de turnos permite rastrear los cambios de turno día/noche de los empleados.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menú para historial de turnos -->
+        <menuitem id="menu_shift_history"
+                  name="Historial de Turnos"
+                  parent="menu_shift_management"
+                  action="action_shift_history"
+                  sequence="20"/>
+    </data>
+</odoo>

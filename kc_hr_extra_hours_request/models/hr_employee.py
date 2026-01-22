@@ -17,12 +17,6 @@ class HrEmployee(models.Model):
         compute='_compute_extra_hours_request_count'
     )
     
-    branch_id = fields.Many2one(
-        'res.branch',
-        string='Sucursal',
-        help='Sucursal o ubicación del empleado'
-    )
-    
     extra_hours_tolerance = fields.Float(
         string='Tolerancia de Horas Extra (minutos)',
         default=15.0,
@@ -32,11 +26,31 @@ class HrEmployee(models.Model):
     @api.depends('extra_hours_request_ids')
     def _compute_extra_hours_request_count(self):
         for employee in self:
-            employee.extra_hours_request_count = len(employee.extra_hours_request_ids)
+            try:
+                # Verificar si el modelo está disponible
+                if 'hr.extra.hours.request' in self.env:
+                    employee.extra_hours_request_count = len(employee.extra_hours_request_ids)
+                else:
+                    employee.extra_hours_request_count = 0
+            except (KeyError, AttributeError):
+                # Si el modelo no está disponible, establecer a 0
+                employee.extra_hours_request_count = 0
 
     def action_view_extra_hours_requests(self):
         """Abrir vista de solicitudes de horas extra del empleado"""
         self.ensure_one()
+        # Verificar si el modelo está disponible
+        if 'hr.extra.hours.request' not in self.env:
+            return {
+                'type': 'ir.actions.client',
+                'tag': 'display_notification',
+                'params': {
+                    'title': _('Error'),
+                    'message': _('El modelo de solicitudes de horas extra no está disponible.'),
+                    'type': 'warning',
+                    'sticky': False,
+                }
+            }
         return {
             'name': _('Solicitudes de Horas Extra'),
             'type': 'ir.actions.act_window',

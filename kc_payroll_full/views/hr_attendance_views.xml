@@ -1,11 +1,33 @@
 <?xml version="1.0" encoding="utf-8"?>
 <odoo>
     <!-- Vista de formulario de asistencia -->
-    <record id="view_attendance_form_inherit" model="ir.ui.view">
-        <field name="name">hr.attendance.form.inherit</field>
+    <record id="view_attendance_form_inherit_partial" model="ir.ui.view">
+        <field name="name">hr.attendance.form.inherit.partial.new</field>
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.hr_attendance_view_form"/>
         <field name="arch" type="xml">
+            <!-- Agregar campos de asistencia parcial después de check_in -->
+            <xpath expr="//field[@name='check_in']" position="after">
+                <group string="Asistencia Parcial" col="2">
+                    <field name="is_partial" 
+                           string="¿Es Asistencia Parcial?" 
+                           readonly="1"
+                           widget="boolean_toggle"/>
+                    <field name="partial_type" 
+                           string="Tipo de Asistencia Parcial"
+                           readonly="1" 
+                           invisible="not is_partial"
+                           widget="radio"
+                           options="{'horizontal': true}"/>
+                    <field name="is_theoretical_entry" 
+                           string="Entrada Teórica"
+                           readonly="1"
+                           invisible="not is_theoretical_entry"
+                           widget="boolean_toggle"
+                           help="La entrada fue calculada según el horario programado, no es una marca real del empleado"/>
+                </group>
+            </xpath>
+
             <!-- Agregar botones en el header existente -->
             <xpath expr="//header" position="inside">
                 <button name="action_update_schedule_times"
@@ -50,53 +72,53 @@
                        optional="hide"/>
             </xpath>
 
-            <!-- Agregar sección de horarios programados después del grupo check_out_group -->
-            <xpath expr="//group[@name='check_out_group']" position="after">
-                <separator string="Horarios Programados y Configuración" invisible="not check_out"/>
-                <notebook invisible="not check_out">
-                    <page string="Horarios Programados" name="schedule">
-                        <group>
-                            <group string="Horarios según Calendario" col="2">
-                                <field name="check_in_schedule" readonly="0"/>
-                                <field name="check_out_schedule" readonly="0"/>
-                            </group>
-                            <group string="Diferencias" col="2">
-                                <field name="check_in_difference" 
-                                       readonly="1"
-                                       widget="float"
-                                       decoration-success="check_in_difference &lt; 0"
-                                       decoration-warning="check_in_difference &gt; 0"
-                                       string="Diferencia Entrada (horas)"
-                                       help="Negativo = entrada temprana, Positivo = entrada tardía"/>
-                                <field name="check_out_difference" 
-                                       readonly="1"
-                                       widget="float"
-                                       decoration-info="check_out_difference &gt; 0"
-                                       string="Diferencia Salida (horas)"
-                                       help="Positivo = salida tardía"/>
-                            </group>
-                        </group>
-                    </page>
-                    
-                    <page string="Configuración" name="config">
-                        <group string="Entrada Temprana como Horas Extra" 
-                               invisible="check_in_difference &gt;= 0 or not check_in_difference">
-                            <field name="count_early_check_in_overtime"
-                                   help="Marcar para contar las horas de entrada temprana como horas extra"/>
-                            <field name="early_check_in_overtime_rate" 
-                                   widget="radio"
-                                   options="{'horizontal': true}"
-                                   invisible="not count_early_check_in_overtime"
-                                   help="Tasa a aplicar a las horas extra por entrada temprana"/>
-                        </group>
-                        
-                        <group string="Información del Día">
-                            <field name="is_sunday" readonly="1"/>
-                            <field name="is_saturday" readonly="1"/>
-                            <field name="is_night_shift" readonly="1"/>
-                        </group>
-                    </page>
-                </notebook>
+            <!-- Agregar campos de horarios programados después de check_out -->
+            <xpath expr="//field[@name='check_out']" position="after">
+                <separator string="Horarios Programados" invisible="not check_out"/>
+                <group string="Horarios según Calendario" col="2" invisible="not check_out">
+                    <field name="check_in_schedule" 
+                           string="Entrada Programada"
+                           readonly="0"
+                           widget="datetime"
+                           options="{'datepicker': {'minDate': false, 'maxDate': false}}"/>
+                    <field name="check_out_schedule" 
+                           string="Salida Programada"
+                           readonly="0"
+                           widget="datetime"
+                           options="{'datepicker': {'minDate': false, 'maxDate': false}}"/>
+                </group>
+                <group string="Diferencias" col="2" invisible="not check_out">
+                    <field name="check_in_difference" 
+                           readonly="1"
+                           widget="float"
+                           decoration-success="check_in_difference &lt; 0"
+                           decoration-warning="check_in_difference &gt; 0"
+                           string="Diferencia Entrada (horas)"
+                           help="Negativo = entrada temprana, Positivo = entrada tardía"/>
+                    <field name="check_out_difference" 
+                           readonly="1"
+                           widget="float"
+                           decoration-info="check_out_difference &gt; 0"
+                           string="Diferencia Salida (horas)"
+                           help="Positivo = salida tardía"/>
+                </group>
+                <group string="Configuración" invisible="not check_out">
+                    <group string="Entrada Temprana como Horas Extra" 
+                           invisible="check_in_difference &gt;= 0 or not check_in_difference">
+                        <field name="count_early_check_in_overtime"
+                               help="Marcar para contar las horas de entrada temprana como horas extra"/>
+                        <field name="early_check_in_overtime_rate" 
+                               widget="radio"
+                               options="{'horizontal': true}"
+                               invisible="not count_early_check_in_overtime"
+                               help="Tasa a aplicar a las horas extra por entrada temprana"/>
+                    </group>
+                    <group string="Información del Día">
+                        <field name="is_sunday" readonly="1"/>
+                        <field name="is_saturday" readonly="1"/>
+                        <field name="is_night_shift" readonly="1"/>
+                    </group>
+                </group>
             </xpath>
         </field>
     </record>
@@ -107,12 +129,18 @@
         <field name="model">hr.attendance</field>
         <field name="inherit_id" ref="hr_attendance.view_attendance_tree"/>
         <field name="arch" type="xml">
+            <!-- Agregar campos después de check_in -->
+            <xpath expr="//field[@name='check_in']" position="after">
+                <field name="check_in_schedule" 
+                       string="Entrada Horario" 
+                       optional="hide" 
+                       widget="datetime"/>
+                <field name="is_partial" optional="show"/>
+                <field name="partial_type" optional="hide"/>
+            </xpath>
+            
             <!-- Agregar columnas de horas extra -->
             <xpath expr="//field[@name='worked_hours']" position="after">
-                <field name="is_partial" 
-                       string="Parcial" 
-                       optional="show"
-                       decoration-warning="is_partial"/>
                 <field name="hours_25" 
                        string="HE 25%" 
                        optional="show"

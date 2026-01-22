@@ -54,12 +54,6 @@
                   action="kc_hr_extra_hours_request.action_hr_extra_hours_request_reason_report" 
                   sequence="40"/>
 
-        <menuitem id="menu_hr_extra_hours_reports_branch" 
-                  name="Por Sucursal" 
-                  parent="menu_hr_extra_hours_reports" 
-                  action="kc_hr_extra_hours_request.action_hr_extra_hours_request_branch_report" 
-                  sequence="50"/>
-
         <menuitem id="menu_hr_extra_hours_reports_export" 
                   name="Exportar a Excel" 
                   parent="menu_hr_extra_hours_reports" 

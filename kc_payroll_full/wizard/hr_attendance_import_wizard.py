@@ -95,18 +95,20 @@ class HrAttendanceImport(models.TransientModel):
             mark_hour = mark.hour + (mark.minute / 60.0)
 
             # Determinar a qué turno pertenece esta marca
-            if mark_hour >= 17.0:  # Marca de tarde/noche (17:00-23:59)
+            # IMPORTANTE: Una marca de entrada (>=16h) SIEMPRE inicia un nuevo turno
+            if mark_hour >= 16.0:  # Marca de tarde/noche (16:00-23:59) = ENTRADA
                 # Esta es una entrada, el turno se identifica por este día
+                # Una entrada siempre inicia un nuevo turno, no se agrupa con el anterior
                 shift_date = mark.date()
                 _logger.info("    Marca de entrada nocturna %s -> Turno del %s", mark,
                              shift_date)
-            elif mark_hour <= 10.0:  # Marca de madrugada (00:00-10:00)
+            elif mark_hour <= 10.0:  # Marca de madrugada (00:00-10:00) = SALIDA
                 # Esta es una salida, el turno se identifica por el día anterior
                 shift_date = mark.date() - timedelta(days=1)
                 _logger.info(
                     "    Marca de salida nocturna %s -> Turno del %s (día anterior)",
                     mark, shift_date)
-            else:  # Marca de día (10:00-17:00) - caso raro en turno nocturno
+            else:  # Marca de día (10:00-16:00) - caso raro en turno nocturno
                 # Probablemente una salida tardía, asociar al día anterior
                 shift_date = mark.date() - timedelta(days=1)
                 _logger.info(
@@ -232,41 +234,71 @@ class HrAttendanceImport(models.TransientModel):
 
     def _find_existing_partial_attendance(self, employee, work_date):
         """
-        Busca asistencias parciales existentes para completar
-        (asistencias con check_in pero sin check_out)
+        Busca asistencias parciales existentes para completar del mismo turno
+        (asistencias con check_in pero sin check_out que pertenecen al turno de work_date)
         """
-        day_start = datetime.combine(work_date, datetime.min.time())
-        day_end = day_start + timedelta(days=1)
+        user_tz = self.env.user.tz or 'UTC'
+        local_tz = pytz.timezone(user_tz)
+        utc_tz = pytz.utc
+        
+        calendar = employee.resource_calendar_id
+        
+        # Para turnos nocturnos, buscar asistencias parciales que comienzan en work_date
+        # (entrada entre las 16h del work_date y las 6h del día siguiente)
+        if calendar and calendar.nocturna:
+            # Turno nocturno: entrada típicamente entre 16h-24h del work_date
+            day_start = local_tz.localize(datetime.combine(work_date, time(16, 0, 0)))
+            day_end = local_tz.localize(datetime.combine(work_date + timedelta(days=1), time(6, 0, 0)))
+        else:
+            # Turno diurno: entrada típicamente entre 0h-12h del work_date
+            day_start = local_tz.localize(datetime.combine(work_date, time(0, 0, 0)))
+            day_end = local_tz.localize(datetime.combine(work_date, time(23, 59, 59)))
+
+        # Convertir a UTC
+        day_start_utc = day_start.astimezone(utc_tz)
+        day_end_utc = day_end.astimezone(utc_tz)
 
         existing_partial = self.env["hr.attendance"].search([
             ("employee_id", "=", employee.id),
-            ("check_in", ">=", day_start.strftime("%Y-%m-%d %H:%M:%S")),
-            ("check_in", "<", day_end.strftime("%Y-%m-%d %H:%M:%S")),
+            ("check_in", ">=", day_start_utc.strftime("%Y-%m-%d %H:%M:%S")),
+            ("check_in", "<", day_end_utc.strftime("%Y-%m-%d %H:%M:%S")),
+            ("check_out", "=", False),  # Sin salida
             ("is_partial", "=", True)  # Asistencia parcial
         ], limit=1)
 
+        if existing_partial:
+            _logger.info("    Asistencia parcial existente encontrada (ID: %d) para turno del %s", 
+                        existing_partial.id, work_date)
+        else:
+            _logger.info("    No se encontró asistencia parcial existente para turno del %s", work_date)
+
         return existing_partial
 
-    def _check_duplicate_attendance(self, employee, check_datetime):
+    def _check_duplicate_attendance(self, employee, work_date, entry_time=None):
         """
-        Verifica si ya existe una asistencia completa para el mismo empleado y día
+        Verifica si ya existe una asistencia completa para el mismo empleado y turno de trabajo
+        Para turnos nocturnos, verifica que no haya un turno completo que comience en work_date
         """
-        _logger.info("    Verificando duplicados para %s en %s", employee.name,
-                     check_datetime)
+        _logger.info("    Verificando duplicados para %s en turno del %s", employee.name,
+                     work_date)
 
         # Obtener el inicio y fin del día en timezone local
         user_tz = self.env.user.tz or 'UTC'
         local_tz = pytz.timezone(user_tz)
         utc_tz = pytz.utc
 
-        # Convertir a timezone local para obtener el día correcto
-        if check_datetime.tzinfo is None:
-            local_dt = local_tz.localize(check_datetime)
+        calendar = employee.resource_calendar_id
+        
+        # Para turnos nocturnos, buscar asistencias que comienzan en work_date
+        # (entrada entre las 16h del work_date y las 6h del día siguiente)
+        if calendar and calendar.nocturna:
+            # Turno nocturno: entrada típicamente entre 16h-24h del work_date
+            day_start = local_tz.localize(datetime.combine(work_date, time(16, 0, 0)))
+            day_end = local_tz.localize(datetime.combine(work_date + timedelta(days=1), time(6, 0, 0)))
         else:
-            local_dt = check_datetime.astimezone(local_tz)
-
-        day_start = local_dt.replace(hour=0, minute=0, second=0, microsecond=0)
-        day_end = day_start + timedelta(days=1)
+            # Turno diurno: entrada típicamente entre 0h-12h del work_date
+            day_start = local_tz.localize(datetime.combine(work_date, time(0, 0, 0)))
+            day_end = local_tz.localize(datetime.combine(work_date, time(23, 59, 59)))
 
         # Convertir de vuelta a UTC para la búsqueda
         day_start_utc = day_start.astimezone(utc_tz)
@@ -274,20 +306,41 @@ class HrAttendanceImport(models.TransientModel):
 
         _logger.info("    Buscando duplicados entre %s y %s", day_start_utc, day_end_utc)
 
-        # Buscar asistencias completas (con check_out)
+        # Buscar asistencias completas (con check_out y sin is_partial) que comienzan en este rango
         existing = self.env["hr.attendance"].search([
             ("employee_id", "=", employee.id),
             ("check_in", ">=", day_start_utc.strftime("%Y-%m-%d %H:%M:%S")),
             ("check_in", "<", day_end_utc.strftime("%Y-%m-%d %H:%M:%S")),
-            ("is_partial", "=", False)  # Solo asistencias completas
+            ("check_out", "!=", False),  # Debe tener salida
+            ("is_partial", "=", False)  # Solo asistencias completas (no parciales)
         ])
 
         _logger.info("    Registros completos existentes: %d", len(existing))
         if existing:
             for rec in existing:
-                _logger.info("    - ID %d: %s - %s", rec.id, rec.check_in, rec.check_out)
+                _logger.info("    - ID %d: %s - %s (is_partial=%s)", rec.id, rec.check_in, rec.check_out, rec.is_partial)
+                # Verificar que realmente sea del mismo turno
+                if entry_time:
+                    rec_check_in_local = pytz.utc.localize(rec.check_in).astimezone(local_tz) if rec.check_in.tzinfo is None else rec.check_in.astimezone(local_tz)
+                    entry_local = local_tz.localize(entry_time) if entry_time.tzinfo is None else entry_time.astimezone(local_tz)
+                    # Si la entrada del registro existente está muy cerca de la entrada nueva, es duplicado
+                    time_diff = abs((rec_check_in_local - entry_local).total_seconds())
+                    if time_diff < 3600:  # Menos de 1 hora de diferencia
+                        _logger.info("    ✓ Duplicado confirmado: diferencia de %d segundos", time_diff)
+                        return True
+                    else:
+                        _logger.info("    ✗ No es duplicado: diferencia de %d segundos (más de 1 hora)", time_diff)
+                else:
+                    # Si no hay entry_time, verificar que el check_in del registro existente esté en el rango del turno
+                    rec_check_in_local = pytz.utc.localize(rec.check_in).astimezone(local_tz) if rec.check_in.tzinfo is None else rec.check_in.astimezone(local_tz)
+                    # Si el check_in está en el rango del turno (16h-6h siguiente para nocturno), es duplicado
+                    if day_start <= rec_check_in_local < day_end:
+                        _logger.info("    ✓ Duplicado confirmado: check_in del registro existente está en el rango del turno")
+                        return True
+                    else:
+                        _logger.info("    ✗ No es duplicado: check_in del registro existente está fuera del rango del turno")
 
-        return len(existing) > 0
+        return False
 
     def _calculate_theoretical_entry_time(self, employee, work_date, exit_time,
                                           schedule_info):
@@ -736,11 +789,18 @@ class HrAttendanceImport(models.TransientModel):
                             _logger.info("    Madrugada: %s", morning_marks)
                             _logger.info("    Orden final: %s", day_times)
 
-                        # Verificar duplicados completos para este día
-                        sample_time = day_times[0]
-                        if self._check_duplicate_attendance(emp, sample_time):
+                        # Verificar duplicados completos para este turno
+                        # Obtener la primera entrada si existe para verificar duplicados
+                        entry_time_for_check = None
+                        if day_times:
+                            # Clasificar temporalmente para obtener la entrada
+                            temp_classified = self._classify_marks_by_schedule(day_times, schedule_info)
+                            if temp_classified['entries']:
+                                entry_time_for_check = temp_classified['entries'][0]
+                        
+                        if self._check_duplicate_attendance(emp, work_date, entry_time_for_check):
                             _logger.info(
-                                "  DUPLICADO: Asistencia completa ya existe para %s en %s - Omitiendo",
+                                "  DUPLICADO: Asistencia completa ya existe para %s en turno del %s - Omitiendo",
                                 emp.name, work_date)
                             skipped_count += 1
                             skipped_details.append({
@@ -1008,19 +1068,117 @@ class HrAttendanceImport(models.TransientModel):
                                     })
                                     continue
                             else:
-                                # No se pudo calcular entrada teórica
+                                # No se pudo calcular entrada teórica con criterios estrictos
+                                # Usar el horario programado del empleado como entrada teórica
+                                # pero marcar como parcial porque no era una marca real
                                 _logger.warning(
-                                    "  No se pudo calcular entrada teórica para empleado %s en fecha %s",
+                                    "  No se pudo calcular entrada teórica exacta para empleado %s en fecha %s - Usando horario programado como entrada teórica",
                                     emp.name, work_date)
-                                error_count += 1
-                                error_details.append({
-                                    'tipo': 'No se pudo calcular entrada teórica',
-                                    'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
-                                    'fecha': work_date,
-                                    'salida': exit_time,
-                                    'error': 'No se encontró horario válido para calcular entrada teórica'
-                                })
-                                continue
+                                try:
+                                    # Obtener el horario programado para usar como entrada teórica
+                                    calendar = schedule_info.get('calendar')
+                                    if calendar:
+                                        # Determinar fecha objetivo (para turnos nocturnos puede ser día anterior)
+                                        target_date = work_date
+                                        if calendar.nocturna:
+                                            # Si la salida es en la madrugada, el turno empezó el día anterior
+                                            if exit_time.hour < 12:
+                                                target_date = work_date - timedelta(days=1)
+                                        
+                                        # Obtener horario de trabajo para la fecha objetivo
+                                        schedule = self._get_work_schedule_for_date(emp, target_date)
+                                        
+                                        if schedule and len(schedule) > 0:
+                                            # Usar el primer horario de entrada del día como referencia
+                                            first_schedule = schedule[0]
+                                            hour_from = first_schedule['hour_from']
+                                            
+                                            # Convertir hora del horario a datetime
+                                            hours = int(hour_from)
+                                            minutes = int((hour_from - hours) * 60)
+                                            
+                                            # Crear datetime para la hora de inicio del turno programado
+                                            # Usar la fecha de salida como base y ajustar según turno nocturno
+                                            scheduled_entry_local = exit_time.replace(
+                                                hour=hours, minute=minutes, second=0, microsecond=0
+                                            )
+                                            
+                                            # Para turnos nocturnos, ajustar la fecha de entrada si es necesario
+                                            if calendar.nocturna and hours >= 16:
+                                                if exit_time.hour < 12:  # Si la salida es en la madrugada
+                                                    scheduled_entry_local = scheduled_entry_local - timedelta(days=1)
+                                            
+                                            # Convertir a UTC para check_in_schedule
+                                            dt_in_schedule_utc = local_tz.localize(
+                                                scheduled_entry_local).astimezone(utc_tz) if scheduled_entry_local.tzinfo is None else scheduled_entry_local.astimezone(utc_tz)
+                                            
+                                            # Convertir salida a UTC
+                                            dt_out_utc = local_tz.localize(exit_time).astimezone(
+                                                utc_tz) if exit_time.tzinfo is None else exit_time.astimezone(utc_tz)
+
+                                            # Crear asistencia parcial: con check_in usando horario programado (entrada teórica)
+                                            # pero marcada como parcial porque la entrada no es una marca real
+                                            attendance_vals = {
+                                                "employee_id": emp.id,
+                                                "check_in": dt_in_schedule_utc.strftime("%Y-%m-%d %H:%M:%S"),  # Entrada según horario programado (teórica)
+                                                "check_in_schedule": dt_in_schedule_utc.strftime("%Y-%m-%d %H:%M:%S"),  # Horario programado como referencia
+                                                "check_out": dt_out_utc.strftime("%Y-%m-%d %H:%M:%S"),  # Marca real de salida
+                                                "is_theoretical_entry": True,  # Marcar como entrada teórica para que se marque como parcial
+                                                # is_partial y partial_type se calcularán automáticamente como True y 'theoretical_entry'
+                                            }
+                                            
+                                            new_attendance = self.env["hr.attendance"].create(attendance_vals)
+                                            
+                                            _logger.info(
+                                                "  ✓ Asistencia parcial creada (ID: %d) - Entrada teórica según horario programado (%s), salida real (marcada como parcial para revisión)",
+                                                new_attendance.id, dt_in_schedule_utc.strftime("%Y-%m-%d %H:%M:%S"))
+                                            imported_count += 1
+                                        else:
+                                            # No hay horario programado, crear solo con salida
+                                            dt_out_utc = local_tz.localize(exit_time).astimezone(
+                                                utc_tz) if exit_time.tzinfo is None else exit_time.astimezone(utc_tz)
+                                            
+                                            attendance_vals = {
+                                                "employee_id": emp.id,
+                                                "check_in": False,
+                                                "check_out": dt_out_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                            }
+                                            
+                                            new_attendance = self.env["hr.attendance"].create(attendance_vals)
+                                            _logger.info(
+                                                "  ✓ Asistencia parcial creada (ID: %d) - Solo salida (sin horario programado disponible)",
+                                                new_attendance.id)
+                                            imported_count += 1
+                                    else:
+                                        # No hay calendario, crear solo con salida
+                                        dt_out_utc = local_tz.localize(exit_time).astimezone(
+                                            utc_tz) if exit_time.tzinfo is None else exit_time.astimezone(utc_tz)
+                                        
+                                        attendance_vals = {
+                                            "employee_id": emp.id,
+                                            "check_in": False,
+                                            "check_out": dt_out_utc.strftime("%Y-%m-%d %H:%M:%S"),
+                                        }
+                                        
+                                        new_attendance = self.env["hr.attendance"].create(attendance_vals)
+                                        _logger.info(
+                                            "  ✓ Asistencia parcial creada (ID: %d) - Solo salida (sin calendario disponible)",
+                                            new_attendance.id)
+                                        imported_count += 1
+
+                                except Exception as e:
+                                    _logger.error(
+                                        "  ERROR creando asistencia parcial (solo salida sin entrada teórica): %s",
+                                        str(e))
+                                    error_count += 1
+                                    error_details.append({
+                                        'tipo': 'Error creando asistencia parcial (solo salida)',
+                                        'empleado': f'{emp.name} (ID Biométrico: {biometric_id_int})',
+                                        'fecha': work_date,
+                                        'salida': exit_time,
+                                        'error': str(e)
+                                    })
+                                    continue
 
                         else:
                             # No hay entradas ni salidas válidas - esto es un error

@@ -93,19 +93,27 @@ class HrAttendance(models.Model):
         compute='_compute_is_night_shift',
         store=True
     )
+    is_theoretical_entry = fields.Boolean(
+        string='Entrada Teórica',
+        default=False,
+        store=True,
+        help='Indica si la entrada (check_in) es teórica (calculada según horario) y no una marca real del empleado'
+    )
+    
     is_partial = fields.Boolean(
         string='Es Asistencia Parcial',
         compute='_compute_is_partial',
         store=True,
-        help='Indica si la asistencia es parcial (solo entrada sin salida, o solo salida sin entrada)'
+        help='Indica si la asistencia es parcial (solo entrada sin salida, solo salida sin entrada, o entrada teórica)'
     )
     partial_type = fields.Selection([
         ('entry_only', 'Solo Entrada'),
         ('exit_only', 'Solo Salida'),
+        ('theoretical_entry', 'Entrada Teórica'),
     ], string='Tipo de Asistencia Parcial',
         compute='_compute_partial_type',
         store=True,
-        help='Tipo de asistencia parcial: solo entrada o solo salida'
+        help='Tipo de asistencia parcial: solo entrada, solo salida, o entrada teórica'
     )
 
     @api.depends('check_in')
@@ -132,16 +140,19 @@ class HrAttendance(models.Model):
             else:
                 record.is_night_shift = False
 
-    @api.depends('check_in', 'check_out')
+    @api.depends('check_in', 'check_out', 'is_theoretical_entry')
     def _compute_is_partial(self):
         for record in self:
-            # Asistencia parcial: falta check_in o falta check_out
-            record.is_partial = not bool(record.check_in) or not bool(record.check_out)
+            # Asistencia parcial: falta check_in, falta check_out, o entrada es teórica
+            record.is_partial = not bool(record.check_in) or not bool(record.check_out) or bool(record.is_theoretical_entry)
     
-    @api.depends('check_in', 'check_out')
+    @api.depends('check_in', 'check_out', 'is_theoretical_entry')
     def _compute_partial_type(self):
         for record in self:
-            if not record.check_in and record.check_out:
+            if record.is_theoretical_entry:
+                # Si la entrada es teórica, marcar como 'theoretical_entry'
+                record.partial_type = 'theoretical_entry'
+            elif not record.check_in and record.check_out:
                 record.partial_type = 'exit_only'
             elif record.check_in and not record.check_out:
                 record.partial_type = 'entry_only'

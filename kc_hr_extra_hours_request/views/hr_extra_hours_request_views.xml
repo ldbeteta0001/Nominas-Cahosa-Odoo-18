@@ -71,7 +71,6 @@
                                 <field name="manager_id" readonly="1"/>
                                 <field name="company_id" readonly="1"/>
                                 <field name="department_id" readonly="1"/>
-                                <field name="branch_id" readonly="1"/>
                             </group>
                             <group name="request_info">
                                 <field name="date" readonly="state != 'draft'"/>

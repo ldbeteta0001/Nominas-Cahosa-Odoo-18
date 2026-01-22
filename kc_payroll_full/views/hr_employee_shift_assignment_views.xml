@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data>
+        <!-- Vista Calendar para asignaciones de turnos -->
+        <record id="view_shift_assignment_calendar" model="ir.ui.view">
+            <field name="name">hr.employee.shift.assignment.calendar</field>
+            <field name="model">hr.employee.shift.assignment</field>
+            <field name="arch" type="xml">
+                <calendar string="Calendario de Turnos" 
+                          date_start="date" 
+                          color="shift_period"
+                          event_open_popup="true"
+                          quick_create="1"
+                          mode="month">
+                    <field name="employee_id"/>
+                    <field name="date"/>
+                    <field name="shift_period"/>
+                    <field name="rotation_id"/>
+                    <field name="reason"/>
+                </calendar>
+            </field>
+        </record>
+
+        <!-- Vista de lista para asignaciones de turnos -->
+        <record id="view_shift_assignment_list" model="ir.ui.view">
+            <field name="name">hr.employee.shift.assignment.list</field>
+            <field name="model">hr.employee.shift.assignment</field>
+            <field name="arch" type="xml">
+                <list string="Asignaciones de Turnos" default_order="date desc, employee_id">
+                    <field name="employee_id"/>
+                    <field name="date"/>
+                    <field name="shift_period"
+                           widget="badge"
+                           decoration-info="shift_period == 'dia'"
+                           decoration-muted="shift_period == 'noche'"/>
+                    <field name="state" widget="badge"/>
+                    <field name="rotation_id" optional="hide"/>
+                    <field name="reason" optional="hide"/>
+                </list>
+            </field>
+        </record>
+
+        <!-- Vista de formulario para asignaciones de turnos -->
+        <record id="view_shift_assignment_form" model="ir.ui.view">
+            <field name="name">hr.employee.shift.assignment.form</field>
+            <field name="model">hr.employee.shift.assignment</field>
+            <field name="arch" type="xml">
+                <form string="Asignación de Turno">
+                    <sheet>
+                        <group>
+                            <group>
+                                <field name="employee_id" options="{'no_create': True}"/>
+                                <field name="date" required="1"/>
+                                <field name="shift_period"
+                                       widget="radio"
+                                       options="{'horizontal': true}"
+                                       required="1"/>
+                            </group>
+                            <group>
+                                <field name="state" readonly="1"/>
+                                <field name="rotation_id" readonly="1"/>
+                                <field name="rotation_line_id" readonly="1"/>
+                                <field name="company_id" readonly="1"/>
+                            </group>
+                        </group>
+                        <group string="Información Adicional">
+                            <field name="reason" placeholder="Motivo o razón de la asignación..."/>
+                        </group>
+                    </sheet>
+                </form>
+            </field>
+        </record>
+
+        <!-- Vista de búsqueda para asignaciones de turnos -->
+        <record id="view_shift_assignment_search" model="ir.ui.view">
+            <field name="name">hr.employee.shift.assignment.search</field>
+            <field name="model">hr.employee.shift.assignment</field>
+            <field name="arch" type="xml">
+                <search string="Buscar Asignaciones de Turnos">
+                    <field name="employee_id"/>
+                    <field name="date"/>
+                    <field name="shift_period"/>
+                    <field name="rotation_id"/>
+                    <separator/>
+                    <filter string="Turno Día" name="day_shift" domain="[('shift_period', '=', 'dia')]"/>
+                    <filter string="Turno Noche" name="night_shift" domain="[('shift_period', '=', 'noche')]"/>
+                    <filter string="Aplicadas" name="applied" domain="[('state', '=', 'applied')]"/>
+                    <filter string="Borrador" name="draft" domain="[('state', '=', 'draft')]"/>
+                    <separator/>
+                    <filter string="Hoy" name="today" domain="[('date', '=', context_today().strftime('%Y-%m-%d'))]"/>
+                    <separator/>
+                    <group expand="0" string="Agrupar Por">
+                        <filter string="Empleado" name="group_employee" context="{'group_by': 'employee_id'}"/>
+                        <filter string="Turno" name="group_shift" context="{'group_by': 'shift_period'}"/>
+                        <filter string="Fecha" name="group_date" context="{'group_by': 'date'}"/>
+                        <filter string="Estado" name="group_state" context="{'group_by': 'state'}"/>
+                    </group>
+                </search>
+            </field>
+        </record>
+
+        <!-- Acción para asignaciones de turnos -->
+        <record id="action_shift_assignment" model="ir.actions.act_window">
+            <field name="name">Asignaciones de Turnos</field>
+            <field name="res_model">hr.employee.shift.assignment</field>
+            <field name="view_mode">calendar,list,form</field>
+            <field name="help" type="html">
+                <p class="o_view_nocontent_smiling_face">
+                    No hay asignaciones de turnos registradas
+                </p>
+                <p>
+                    Las asignaciones de turnos se generan automáticamente al aplicar una rotación de turnos,
+                    o se pueden crear manualmente para días específicos.
+                </p>
+            </field>
+        </record>
+
+        <!-- Menú para asignaciones de turnos -->
+        <menuitem id="menu_shift_assignment"
+                  name="Asignaciones de Turnos"
+                  parent="menu_shift_management"
+                  action="action_shift_assignment"
+                  sequence="30"/>
+    </data>
+</odoo>
