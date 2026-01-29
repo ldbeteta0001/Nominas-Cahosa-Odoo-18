@@ -30,6 +30,7 @@
         'views/hr_employee_schedule_history_views.xml',
         'views/hr_employee_shift_history_views.xml',
         'views/hr_employee_shift_assignment_views.xml',
+        'wizard/hr_shift_assignment_import_views.xml',
         'views/hr_shift_rotation_views.xml',
         'views/hr_contract_views.xml',
         'views/hr_attendance_views.xml',

@@ -50,6 +50,13 @@ class HrShiftRotationLine(models.Model):
         help='Razón del cambio de turno (opcional)'
     )
 
+    resource_calendar_id = fields.Many2one(
+        'resource.calendar',
+        string='Horario de Trabajo',
+        help='Horario de trabajo a aplicar durante este período. '
+             'Se actualizará en los contratos de los empleados al aplicar la rotación.'
+    )
+
     weeks = fields.Float(
         string='Semanas',
         compute='_compute_weeks',
@@ -65,6 +72,30 @@ class HrShiftRotationLine(models.Model):
                 record.weeks = round((delta.days + 1) / 7.0, 1)
             else:
                 record.weeks = 0.0
+
+    @api.onchange('shift_period')
+    def _onchange_shift_period(self):
+        """Sugerir horario de trabajo según el turno seleccionado"""
+        if self.shift_period:
+            # Buscar calendario según el turno
+            # Para turno día: es_nomina_semanal=True, nocturna=False
+            # Para turno noche: es_nomina_semanal=True, nocturna=True
+            domain = [
+                ('es_nomina_semanal', '=', True)
+            ]
+            
+            if self.shift_period == 'dia':
+                domain.append(('nocturna', '=', False))
+            elif self.shift_period == 'noche':
+                domain.append(('nocturna', '=', True))
+            
+            # Buscar calendario que coincida
+            calendar = self.env['resource.calendar'].search(domain, limit=1)
+            if calendar:
+                self.resource_calendar_id = calendar
+            else:
+                # Si no se encuentra, limpiar el campo
+                self.resource_calendar_id = False
 
     @api.constrains('date_from', 'date_to')
     def _check_dates(self):
@@ -184,11 +215,23 @@ class HrShiftRotation(models.Model):
         # Alternar turno
         next_shift = 'noche' if last_line and last_line.shift_period == 'dia' else 'dia'
 
+        # Buscar calendario según el turno
+        calendar_domain = [
+            ('es_nomina_semanal', '=', True)
+        ]
+        if next_shift == 'dia':
+            calendar_domain.append(('nocturna', '=', False))
+        else:
+            calendar_domain.append(('nocturna', '=', True))
+        
+        suggested_calendar = self.env['resource.calendar'].search(calendar_domain, limit=1)
+
         self.rotation_line_ids = [(0, 0, {
             'sequence': (last_line.sequence + 10) if last_line else 10,
             'shift_period': next_shift,
             'date_from': new_date_from,
             'date_to': new_date_from + timedelta(weeks=2) - timedelta(days=1),  # Sugerir 2 semanas
+            'resource_calendar_id': suggested_calendar.id if suggested_calendar else False,
             'reason': _('Rotación automática')
         })]
         return True
@@ -274,6 +317,28 @@ class HrShiftRotation(models.Model):
                         _logger.debug(f"Cerrado período anterior para empleado {employee.name} hasta {close_date}")
                     
                     for line in self.rotation_line_ids.sorted('sequence'):
+                        # Actualizar horario en el contrato del empleado si hay calendario en la línea
+                        if line.resource_calendar_id:
+                            # Obtener el contrato activo del empleado que cubre este período
+                            contract = self.env['hr.contract'].search([
+                                ('employee_id', '=', employee.id),
+                                ('state', '=', 'open'),
+                                ('date_start', '<=', line.date_to or line.date_from),
+                                '|',
+                                ('date_end', '=', False),
+                                ('date_end', '>=', line.date_from)
+                            ], limit=1)
+                            
+                            if contract and contract.resource_calendar_id != line.resource_calendar_id:
+                                contract.write({
+                                    'resource_calendar_id': line.resource_calendar_id.id
+                                })
+                                # También actualizar en el empleado
+                                employee.write({
+                                    'resource_calendar_id': line.resource_calendar_id.id
+                                })
+                                _logger.info(f"Actualizado horario para empleado {employee.name} en período {line.date_from} - {line.date_to}: {line.resource_calendar_id.name}")
+                        
                         # Generar todas las fechas del rango
                         dates = self._iter_dates(line.date_from, line.date_to or line.date_from)
                         

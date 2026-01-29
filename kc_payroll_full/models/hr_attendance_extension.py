@@ -41,6 +41,12 @@ class HrAttendance(models.Model):
         store=True,
         help='Horas trabajadas en domingo (se pagan al doble)'
     )
+    saturday_hours = fields.Float(
+        string='Horas Sábado',
+        compute='_compute_overtime_hours',
+        store=True,
+        help='Horas trabajadas en sábado'
+    )
     # Campos de diferencias con horario
     check_in_schedule = fields.Datetime(
         string='Entrada según Horario',
@@ -132,13 +138,78 @@ class HrAttendance(models.Model):
             else:
                 record.is_saturday = False
 
-    @api.depends('employee_id', 'check_in')
+    @api.depends('employee_id', 'check_in', 'check_out')
     def _compute_is_night_shift(self):
         for record in self:
-            if record.employee_id and record.employee_id.resource_calendar_id:
-                record.is_night_shift = record.employee_id.resource_calendar_id.nocturna
-            else:
-                record.is_night_shift = False
+            calendar = record._get_effective_calendar()
+            record.is_night_shift = bool(calendar and calendar.nocturna)
+
+    def _get_effective_calendar(self):
+        """Obtener el calendario efectivo para esta asistencia según rotación/fecha."""
+        self.ensure_one()
+        if not self.employee_id:
+            return False
+
+        employee = self.employee_id
+        target_dt = self.check_in or self.check_out
+        if not target_dt:
+            return employee.resource_calendar_id
+
+        user_tz = pytz.timezone(self.env.user.tz or 'UTC')
+        if target_dt.tzinfo is None:
+            target_dt = target_dt.replace(tzinfo=pytz.UTC)
+        target_local = target_dt.astimezone(user_tz)
+        target_date = target_local.date()
+
+        assignment = self.env['hr.employee.shift.assignment'].search([
+            ('employee_id', '=', employee.id),
+            ('date', '=', target_date),
+        ], limit=1)
+
+        if assignment:
+            if assignment.rotation_line_id and assignment.rotation_line_id.resource_calendar_id:
+                _logger.info(
+                    "_get_effective_calendar: Empleado %s (%s) fecha %s usa calendario de rotación %s",
+                    employee.name, employee.id, target_date,
+                    assignment.rotation_line_id.resource_calendar_id.name
+                )
+                return assignment.rotation_line_id.resource_calendar_id
+            if assignment.shift_period:
+                nocturna = assignment.shift_period == 'noche'
+                calendar = self.env['resource.calendar'].search([
+                    ('es_nomina_semanal', '=', True),
+                    ('nocturna', '=', nocturna),
+                ], limit=1)
+                if calendar:
+                    _logger.info(
+                        "_get_effective_calendar: Empleado %s (%s) fecha %s usa calendario por turno %s -> %s",
+                        employee.name, employee.id, target_date, assignment.shift_period,
+                        calendar.name
+                    )
+                    return calendar
+
+        _logger.info(
+            "_get_effective_calendar: Empleado %s (%s) fecha %s usa calendario del empleado %s",
+            employee.name, employee.id, target_date,
+            employee.resource_calendar_id.name if employee.resource_calendar_id else 'N/A'
+        )
+        contract = self.env['hr.contract'].search([
+            ('employee_id', '=', employee.id),
+            ('state', '=', 'open'),
+            ('date_start', '<=', target_date),
+            '|',
+            ('date_end', '=', False),
+            ('date_end', '>=', target_date),
+        ], limit=1)
+        if contract and contract.resource_calendar_id:
+            _logger.info(
+                "_get_effective_calendar: Empleado %s (%s) fecha %s usa calendario de contrato %s",
+                employee.name, employee.id, target_date,
+                contract.resource_calendar_id.name
+            )
+            return contract.resource_calendar_id
+
+        return employee.resource_calendar_id
 
     @api.depends('check_in', 'check_out', 'is_theoretical_entry')
     def _compute_is_partial(self):
@@ -298,7 +369,7 @@ class HrAttendance(models.Model):
             return None
 
         employee = self.employee_id
-        calendar = employee.resource_calendar_id
+        calendar = self._get_effective_calendar()
         if not calendar:
             _logger.warning("_get_expected_schedule: empleado %s no tiene calendario", employee.name)
             return None
@@ -755,7 +826,8 @@ class HrAttendance(models.Model):
 
     @api.depends('check_in', 'check_out', 'employee_id', 'check_in_difference', 
                  'check_out_difference', 'count_early_check_in_overtime', 
-                 'early_check_in_overtime_rate', 'is_sunday', 'is_saturday', 'is_night_shift')
+                 'early_check_in_overtime_rate', 'is_sunday', 'is_saturday', 'is_night_shift',
+                 'saturday_hours')
     def _compute_overtime_hours(self):
         """Calcular horas extra según diferentes escenarios"""
         for record in self:
@@ -770,6 +842,7 @@ class HrAttendance(models.Model):
             record.hours_50 = 0.0
             record.hours_75 = 0.0
             record.sunday_hours = 0.0
+            record.saturday_hours = 0.0
 
             if not record.check_in or not record.check_out:
                 _logger.warning("_compute_overtime_hours: Falta check-in o check-out")
@@ -789,9 +862,21 @@ class HrAttendance(models.Model):
                 # Se pagan al doble
                 continue
 
-            # Si es sábado sin horario configurado o con horario incompleto
+            # Si es sábado, calcular horas de sábado
             if record.is_saturday:
-                calendar = record.employee_id.resource_calendar_id
+                # Si tiene horarios programados (check_in_schedule y check_out_schedule),
+                # significa que es un sábado con horario, independientemente de si el calendario
+                # tiene una línea específica para sábado o no
+                if record.check_in_schedule and record.check_out_schedule:
+                    # Sábado CON horario programado: todas las horas son horas de sábado
+                    delta = record.check_out - record.check_in
+                    record.saturday_hours = delta.total_seconds() / 3600.0
+                    _logger.info("_compute_overtime_hours: Es sábado con horario programado, horas sábado: %.2f", record.saturday_hours)
+                    # Las horas de sábado no se cuentan en HE25, HE50, HE75
+                    continue
+                
+                # Si no tiene horarios programados, verificar si el calendario tiene horario para sábado
+                calendar = record._get_effective_calendar()
                 if calendar:
                     weekday = record.check_in.weekday()
                     saturday_attendances = calendar.attendance_ids.filtered(
@@ -821,44 +906,51 @@ class HrAttendance(models.Model):
                             _logger.warning("_compute_overtime_hours: Sábado con turno nocturno pero sin segunda línea del domingo válida")
                             saturday_attendances = False
                     
-                    if not saturday_attendances:
-                        # No hay horario para sábado o es incompleto
+                    if saturday_attendances:
+                        # Sábado CON horario en calendario: todas las horas son horas de sábado
                         delta = record.check_out - record.check_in
-                        worked_hours = delta.total_seconds() / 3600.0
-                        
-                        # Si es turno nocturno, calcular por rangos:
-                        # De 18:00 a 00:00 = horas normales (no extra)
-                        # De 00:00 a 06:00 = HE75%
-                        if record.is_night_shift:
-                            user_tz = pytz.timezone(self.env.user.tz or 'UTC')
-                            check_in_utc = record.check_in.replace(tzinfo=pytz.UTC)
-                            check_in_local = check_in_utc.astimezone(user_tz)
-                            check_out_utc = record.check_out.replace(tzinfo=pytz.UTC)
-                            check_out_local = check_out_utc.astimezone(user_tz)
-                            
-                            # Calcular horas desde medianoche (00:00 del domingo) hasta 06:00 como HE75
-                            next_day_date = check_in_local.date() + timedelta(days=1)
-                            midnight = user_tz.localize(datetime.combine(next_day_date, time(0, 0)))
-                            he75_end = user_tz.localize(datetime.combine(next_day_date, time(6, 0)))
-                            
-                            # Horas HE75 (00:00 a 06:00)
-                            if check_out_local >= midnight:
-                                start_he75 = max(midnight, check_in_local)
-                                end_he75 = min(he75_end, check_out_local)
-                                if end_he75 > start_he75:
-                                    he75_delta = end_he75 - start_he75
-                                    record.hours_75 = he75_delta.total_seconds() / 3600.0
-                                    _logger.info("_compute_overtime_hours: Sábado nocturno sin horario - HE75 (00:00-06:00): %.2f", record.hours_75)
-                            
-                            # Las horas de 18:00 a 00:00 son normales (no se cuentan como extra)
-                            # Por eso no las agregamos a hours_25, hours_50 o hours_75
-                            _logger.info("_compute_overtime_hours: Sábado sin horario, turno nocturno - HE75: %.2f (horas 18:00-00:00 son normales)", 
-                                        record.hours_75)
-                        else:
-                            # Si es turno diurno, todo es HE25
-                            record.hours_25 = worked_hours
-                            _logger.info("_compute_overtime_hours: Sábado sin horario, turno diurno, todo HE25: %.2f", record.hours_25)
+                        record.saturday_hours = delta.total_seconds() / 3600.0
+                        _logger.info("_compute_overtime_hours: Es sábado con horario en calendario, horas sábado: %.2f", record.saturday_hours)
+                        # Las horas de sábado no se cuentan en HE25, HE50, HE75
                         continue
+                
+                # Sábado sin horario: calcular según tipo de turno
+                delta = record.check_out - record.check_in
+                worked_hours = delta.total_seconds() / 3600.0
+                
+                # Si es turno nocturno, calcular por rangos:
+                # De 18:00 a 00:00 = horas normales (no extra)
+                # De 00:00 a 06:00 = HE75%
+                if record.is_night_shift:
+                    user_tz = pytz.timezone(self.env.user.tz or 'UTC')
+                    check_in_utc = record.check_in.replace(tzinfo=pytz.UTC)
+                    check_in_local = check_in_utc.astimezone(user_tz)
+                    check_out_utc = record.check_out.replace(tzinfo=pytz.UTC)
+                    check_out_local = check_out_utc.astimezone(user_tz)
+                    
+                    # Calcular horas desde medianoche (00:00 del domingo) hasta 06:00 como HE75
+                    next_day_date = check_in_local.date() + timedelta(days=1)
+                    midnight = user_tz.localize(datetime.combine(next_day_date, time(0, 0)))
+                    he75_end = user_tz.localize(datetime.combine(next_day_date, time(6, 0)))
+                    
+                    # Horas HE75 (00:00 a 06:00)
+                    if check_out_local >= midnight:
+                        start_he75 = max(midnight, check_in_local)
+                        end_he75 = min(he75_end, check_out_local)
+                        if end_he75 > start_he75:
+                            he75_delta = end_he75 - start_he75
+                            record.hours_75 = he75_delta.total_seconds() / 3600.0
+                            _logger.info("_compute_overtime_hours: Sábado nocturno sin horario - HE75 (00:00-06:00): %.2f", record.hours_75)
+                    
+                    # Las horas de 18:00 a 00:00 son normales (no se cuentan como extra)
+                    # Por eso no las agregamos a hours_25, hours_50 o hours_75
+                    _logger.info("_compute_overtime_hours: Sábado sin horario, turno nocturno - HE75: %.2f (horas 18:00-00:00 son normales)", 
+                                record.hours_75)
+                else:
+                    # Si es turno diurno sin horario, todo es HE25
+                    record.hours_25 = worked_hours
+                    _logger.info("_compute_overtime_hours: Sábado sin horario, turno diurno, todo HE25: %.2f", record.hours_25)
+                continue
 
             # Calcular horas trabajadas
             delta = record.check_out - record.check_in
@@ -884,7 +976,7 @@ class HrAttendance(models.Model):
                             check_in_local, check_out_local)
 
                 # Obtener el calendario y las líneas de horario agrupadas por shift_group
-                calendar = record.employee_id.resource_calendar_id
+                calendar = record._get_effective_calendar()
                 if not calendar:
                     continue
                 
@@ -1078,17 +1170,23 @@ class HrAttendance(models.Model):
                 
                 # Verificar si este horario debe calcular horas extra
                 # Solo los horarios de 52 y 60 horas diurnos calculan extras
-                calendar = record.employee_id.resource_calendar_id
+                calendar = record._get_effective_calendar()
                 should_calculate_overtime = False
                 
                 if calendar:
-                    calendar_name = calendar.name or ''
-                    # Verificar si el nombre contiene "52" o "60" (horarios que calculan extras)
-                    if '52' in calendar_name or '60' in calendar_name:
+                    required_hours = getattr(calendar, 'full_time_required_hours', False)
+                    if required_hours in (52, 60):
                         should_calculate_overtime = True
-                        _logger.info("_compute_overtime_hours: Horario '%s' debe calcular horas extra", calendar_name)
+                        _logger.info(
+                            "_compute_overtime_hours: Horario con full_time_required_hours=%s debe calcular horas extra",
+                            required_hours
+                        )
                     else:
-                        _logger.info("_compute_overtime_hours: Horario '%s' NO calcula horas extra (solo 52 y 60 horas)", calendar_name)
+                        calendar_name = calendar.name or ''
+                        _logger.info(
+                            "_compute_overtime_hours: Horario '%s' con full_time_required_hours=%s NO calcula horas extra (solo 52 y 60 horas)",
+                            calendar_name, required_hours
+                        )
                 
                 if should_calculate_overtime and record.check_out and record.check_out_schedule:
                     user_tz = pytz.timezone(self.env.user.tz or 'UTC')
@@ -1159,8 +1257,8 @@ class HrAttendance(models.Model):
                     elif rate == '75':
                         record.hours_75 += early_hours
             
-            _logger.info("_compute_overtime_hours: RESULTADO FINAL - HE25: %.2f, HE50: %.2f, HE75: %.2f, Domingo: %.2f",
-                        record.hours_25, record.hours_50, record.hours_75, record.sunday_hours)
+            _logger.info("_compute_overtime_hours: RESULTADO FINAL - HE25: %.2f, HE50: %.2f, HE75: %.2f, Domingo: %.2f, Sábado: %.2f",
+                        record.hours_25, record.hours_50, record.hours_75, record.sunday_hours, record.saturday_hours)
 
     def _calculate_overtime_hours_by_ranges(self, extra_hours):
         """
@@ -1291,8 +1389,12 @@ class HrAttendance(models.Model):
         """
         Calcular horas extra para turnos diurnos de 52/60 horas
         Calcula las horas trabajadas dentro de los rangos configurados:
-        - Si la salida es tardía: desde salida programada hasta salida real
-        - Si la salida es temprana o puntual: desde inicio del rango hasta salida real
+        - HE25%: desde hour_25_from (ej: 16:30) hasta min(actual_hour, hour_25_to)
+        - HE50%: desde hour_50_from (ej: 19:00) hasta min(actual_hour, hour_50_to)
+        - HE75%: desde hour_75_from (ej: 22:00) hasta min(actual_hour, hour_75_to)
+        
+        IMPORTANTE: Las horas extra se contabilizan desde el inicio de cada rango,
+        independientemente de si la salida es temprana, puntual o tardía.
         """
         # Obtener configuración de rangos
         try:
@@ -1320,60 +1422,56 @@ class HrAttendance(models.Model):
         _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: Salida programada: %.2f, Salida real: %.2f", 
                     schedule_hour, actual_hour)
         
-        # Determinar el punto de inicio para calcular horas extra
-        # Si la salida es tardía, empezar desde la salida programada
-        # Si la salida es temprana o puntual, empezar desde el inicio del rango HE25
-        if actual_hour > schedule_hour:
-            # Salida tardía: calcular desde salida programada hasta salida real
-            start_point = schedule_hour
-            _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: Salida tardía, calculando desde %.2f hasta %.2f", 
-                        start_point, actual_hour)
-        else:
-            # Salida temprana o puntual: calcular desde inicio del rango HE25 hasta salida real
-            start_point = hour_25_from
-            _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: Salida temprana/puntual, calculando desde %.2f hasta %.2f", 
-                        start_point, actual_hour)
+        # IMPORTANTE: Las horas extra se contabilizan desde hour_25_from (ej: 16:30)
+        # independientemente de si la salida es temprana, puntual o tardía
+        # El punto de inicio SIEMPRE es hour_25_from para calcular horas trabajadas dentro de los rangos
         
         # Calcular horas trabajadas dentro de cada rango
-        # Rango HE25: desde hour_25_from hasta hour_25_to
+        # Rango HE25: desde hour_25_from hasta hour_25_to (o hasta actual_hour si es antes)
         if actual_hour > hour_25_from:
-            start_he25 = max(start_point, hour_25_from)
+            # SIEMPRE calcular desde hour_25_from hasta min(actual_hour, hour_25_to)
+            start_he25 = hour_25_from
             end_he25 = min(actual_hour, hour_25_to)
             if end_he25 > start_he25:
                 hours_25 = end_he25 - start_he25
-                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE25: %.2f horas (%.2f - %.2f)", 
+                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE25: %.2f horas (desde %.2f hasta %.2f)", 
                             hours_25, start_he25, end_he25)
         
         # Rango HE50: desde hour_50_from hasta hour_50_to
         if actual_hour > hour_50_from:
-            start_he50 = max(start_point, hour_50_from, hour_25_to)
+            # Calcular desde hour_50_from hasta min(actual_hour, hour_50_to)
+            start_he50 = hour_50_from
             end_he50 = min(actual_hour, hour_50_to)
             if end_he50 > start_he50:
                 hours_50 = end_he50 - start_he50
-                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE50: %.2f horas (%.2f - %.2f)", 
+                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE50: %.2f horas (desde %.2f hasta %.2f)", 
                             hours_50, start_he50, end_he50)
         
         # Rango HE75: desde hour_75_from hasta hour_75_to (puede cruzar medianoche)
         if hour_75_to < hour_75_from:  # Cruza medianoche
             if actual_hour >= hour_75_from:
                 # Salida en el mismo día, después de hour_75_from
-                start_he75 = max(start_point, hour_75_from, hour_50_to)
+                start_he75 = hour_75_from
                 end_he75 = min(actual_hour, 24.0)
                 if end_he75 > start_he75:
                     hours_75 = end_he75 - start_he75
-                    _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75 (mismo día): %.2f horas", hours_75)
+                    _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75 (mismo día): %.2f horas (desde %.2f hasta %.2f)", 
+                                hours_75, start_he75, end_he75)
             elif actual_hour < hour_75_to:
                 # Salida en el día siguiente, antes de hour_75_to
+                # Calcular desde medianoche (00:00) hasta actual_hour
                 hours_75 = actual_hour
-                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75 (día siguiente): %.2f horas", hours_75)
+                _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75 (día siguiente): %.2f horas (desde 00:00 hasta %.2f)", 
+                            hours_75, actual_hour)
         else:
             # No cruza medianoche
             if actual_hour > hour_75_from:
-                start_he75 = max(start_point, hour_75_from, hour_50_to)
+                start_he75 = hour_75_from
                 end_he75 = min(actual_hour, hour_75_to)
                 if end_he75 > start_he75:
                     hours_75 = end_he75 - start_he75
-                    _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75: %.2f horas", hours_75)
+                    _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: HE75: %.2f horas (desde %.2f hasta %.2f)", 
+                                hours_75, start_he75, end_he75)
         
         _logger.info("_calculate_overtime_hours_by_ranges_for_day_shift: RESULTADO - HE25: %.2f, HE50: %.2f, HE75: %.2f", 
                     hours_25, hours_50, hours_75)

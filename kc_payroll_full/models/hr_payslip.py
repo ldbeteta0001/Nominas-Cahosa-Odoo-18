@@ -15,7 +15,7 @@ class HrPayslip(models.Model):
     def _get_worked_day_lines_values(self, domain=None):
         """
         Sobrescribir para:
-        1. Agregar horas extra (HE25, HE50, HE75, SUNDAY) desde asistencias
+        1. Agregar horas extra (HE25, HE50, HE75, SATURDAY, SUNDAY) desde asistencias
         2. Limitar horas normales a 44 horas semanales cuando es_nomina_semanal=True
         """
         res = super()._get_worked_day_lines_values(domain)
@@ -39,16 +39,18 @@ class HrPayslip(models.Model):
         # Forzar recálculo de horas extra en asistencias
         if attendances:
             attendances._compute_overtime_hours()
-            attendances.invalidate_recordset(['hours_25', 'hours_50', 'hours_75', 'sunday_hours'])
+            attendances.invalidate_recordset(['hours_25', 'hours_50', 'hours_75', 'sunday_hours', 'saturday_hours'])
 
-        # Separar asistencias de días laborables y domingos
-        weekday_attendances = attendances.filtered(lambda a: not a.is_sunday)
+        # Separar asistencias de días laborables, sábados y domingos
+        weekday_attendances = attendances.filtered(lambda a: not a.is_sunday and not a.is_saturday)
+        saturday_attendances = attendances.filtered(lambda a: a.is_saturday)
         sunday_attendances = attendances.filtered(lambda a: a.is_sunday)
 
         # Sumar horas extra de días laborables
         total_hours_25 = sum(weekday_attendances.mapped('hours_25'))
         total_hours_50 = sum(weekday_attendances.mapped('hours_50'))
         total_hours_75 = sum(weekday_attendances.mapped('hours_75'))
+        total_saturday_hours = sum(saturday_attendances.mapped('saturday_hours'))
         total_sunday_hours = sum(sunday_attendances.mapped('sunday_hours'))
 
         # Obtener o crear tipos de entrada de trabajo
@@ -73,6 +75,14 @@ class HrPayslip(models.Model):
             he75_type = self.env['hr.work.entry.type'].create({
                 'name': 'Horas Extra 75%',
                 'code': 'HE75',
+                'is_leave': False,
+            })
+
+        saturday_type = self.env['hr.work.entry.type'].search([('code', '=', 'SATURDAY')], limit=1)
+        if not saturday_type:
+            saturday_type = self.env['hr.work.entry.type'].create({
+                'name': 'Horas Sábado',
+                'code': 'SATURDAY',
                 'is_leave': False,
             })
 
@@ -132,6 +142,22 @@ class HrPayslip(models.Model):
                     'number_of_days': 0,
                     'number_of_hours': total_hours_75,
                     'code': 'HE75',
+                })
+
+        if total_saturday_hours > 0:
+            existing = False
+            for line in res:
+                if line.get('code') == 'SATURDAY':
+                    line['number_of_hours'] = line.get('number_of_hours', 0) + total_saturday_hours
+                    existing = True
+                    break
+            if not existing:
+                res.append({
+                    'sequence': saturday_type.sequence or 10,
+                    'work_entry_type_id': saturday_type.id,
+                    'number_of_days': 0,
+                    'number_of_hours': total_saturday_hours,
+                    'code': 'SATURDAY',
                 })
 
         if total_sunday_hours > 0:

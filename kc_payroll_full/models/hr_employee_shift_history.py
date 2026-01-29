@@ -113,7 +113,7 @@ class HrEmployeeShiftHistory(models.Model):
     @api.model_create_multi
     def create(self, vals_list):
         # Si se está creando en modo excepción, usar el método helper
-        if self.env.context.get('create_exception_mode') and vals_list:
+        if self.env.context.get('create_exception_mode') and not self.env.context.get('from_manual_change') and vals_list:
             vals = vals_list[0]
             employee_id = vals.get('employee_id')
             shift_period = vals.get('shift_period')
@@ -225,7 +225,7 @@ class HrEmployeeShiftHistory(models.Model):
         :return: Record creado
         """
         # Desactivar temporalmente la validación de solapamiento
-        record = self.create({
+        record = self.with_context(skip_overlap_check=True, from_manual_change=True, create_exception_mode=False).create({
             'employee_id': employee_id,
             'shift_period': shift_period,
             'date_from': date_from,

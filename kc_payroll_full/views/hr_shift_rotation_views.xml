@@ -27,6 +27,11 @@
             <field name="arch" type="xml">
                 <form string="Programar Rotación de Turnos">
                     <header>
+                        <button name="%(action_hr_shift_assignment_import)d"
+                                string="Importar Turnos"
+                                type="action"
+                                class="btn-secondary"
+                                context="{'default_rotation_id': id}"/>
                         <button name="action_preview"
                                 string="Vista Previa"
                                 type="object"
@@ -118,6 +123,10 @@
                                     <list editable="bottom" string="Períodos de Rotación">
                                         <field name="sequence" invisible="1"/>
                                         <field name="shift_period" required="1"/>
+                                        <field name="resource_calendar_id" 
+                                               options="{'no_create': True, 'no_create_edit': True}"
+                                               domain="[('es_nomina_semanal', '=', True)]"
+                                               help="Horario de trabajo a aplicar durante este período. Se actualizará en los contratos al aplicar la rotación."/>
                                         <field name="date_from" required="1"/>
                                         <field name="date_to" required="1"/>
                                         <field name="weeks" readonly="1" string="Semanas"/>

@@ -107,6 +107,7 @@ class HrContract(models.Model):
             'context': {
                 'default_employee_id': self.employee_id.id,
                 'default_date_from': fields.Date.today(),
-                'create_exception_mode': True
+                'create_exception_mode': True,
+                'skip_overlap_check': True
             }
         }

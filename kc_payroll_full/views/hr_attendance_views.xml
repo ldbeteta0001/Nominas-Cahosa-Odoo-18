@@ -70,6 +70,12 @@
                        decoration-success="sunday_hours &gt; 0"
                        string="Horas Domingo"
                        optional="hide"/>
+                <field name="saturday_hours" 
+                       widget="float_time" 
+                       readonly="1"
+                       decoration-success="saturday_hours &gt; 0"
+                       string="Horas Sábado"
+                       optional="hide"/>
             </xpath>
 
             <!-- Agregar campos de horarios programados después de check_out -->
@@ -161,6 +167,11 @@
                        optional="show"
                        widget="float_time"
                        decoration-success="sunday_hours &gt; 0"/>
+                <field name="saturday_hours" 
+                       string="Horas Sábado" 
+                       optional="show"
+                       widget="float_time"
+                       decoration-success="saturday_hours &gt; 0"/>
             </xpath>
         </field>
     </record>
