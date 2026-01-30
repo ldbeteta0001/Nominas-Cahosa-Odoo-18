@@ -40,7 +40,7 @@
                                 help="Registrar una excepción de turno que ajustará automáticamente los períodos existentes"/>
                     </group>
                     <field name="shift_history_ids" nolabel="1">
-                        <list>
+                        <list delete="true" editable="bottom" create="true" edit="true">
                             <field name="shift_period"
                                    widget="badge"
                                    decoration-info="shift_period == 'dia'"

@@ -19,6 +19,7 @@
         'base',
         'hr',
         'hr_attendance',
+        'kc_payroll_full',
     ],
     'external_dependencies': {
         'python': ['zk', 'requests'],

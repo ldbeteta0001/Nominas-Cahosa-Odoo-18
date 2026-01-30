@@ -846,6 +846,15 @@ class BiometricDevice(models.Model):
             return self._sync_attendance_from_server(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
         else:
             return self._sync_attendance_from_device(fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+
+    def _process_attendance_marks_with_import_rules(self, employee, marks):
+        """Procesar marcas con las mismas reglas del importador de Excel."""
+        if 'hr.attendance.import' not in self.env:
+            raise UserError(_('El módulo de importación de asistencias no está instalado.'))
+        wizard = self.env['hr.attendance.import'].create({
+            'allow_partial_attendance': True,
+        })
+        return wizard.process_attendance_marks(employee, marks)
     
     def _sync_attendance_from_device(self, fecha_desde=None, fecha_hasta=None):
         """
@@ -940,13 +949,28 @@ class BiometricDevice(models.Model):
                     self.last_sync, fecha_desde, fecha_hasta, total_attendances
                 )
             
-            # Crear registros en biometric.attendance y hr.attendance
+            # Crear registros en biometric.attendance y procesar hr.attendance
+            # usando las mismas reglas del importador de Excel
             biometric_records_created = 0
             attendance_records_created = 0
             employees_not_found = []
             existing_records_skipped = 0
+            marks_by_employee = defaultdict(list)
+            processed_employee_ids = []
             
             for user_id, fechas in por_usuario.items():
+                # Buscar empleado por ID biométrico
+                employee = self.env['hr.employee'].search([
+                    ('biometric_user_id', '=', user_id),
+                    ('biometric_sync_active', '=', True)
+                ], limit=1)
+                
+                if not employee:
+                    if user_id not in employees_not_found:
+                        employees_not_found.append(user_id)
+                        _logger.warning("No se encontró empleado con ID biométrico %s (Usuario: %s)", user_id, user_map.get(user_id, 'Desconocido'))
+                    continue
+                
                 for fecha, att_list in fechas.items():
                     if not att_list:
                         continue
@@ -960,19 +984,11 @@ class BiometricDevice(models.Model):
                     # Solo crear salida si hay más de un registro y son diferentes
                     salida = salida_att.timestamp if (salida_att and len(att_list_sorted) > 1 and salida_att != entrada_att) else None
                     
-                    # Buscar empleado por ID biométrico
-                    employee = self.env['hr.employee'].search([
-                        ('biometric_user_id', '=', user_id),
-                        ('biometric_sync_active', '=', True)
-                    ], limit=1)
+                    # Guardar todas las marcas para procesarlas con reglas del importador
+                    for att in att_list_sorted:
+                        marks_by_employee[employee.id].append(att.timestamp)
                     
-                    if not employee:
-                        if user_id not in employees_not_found:
-                            employees_not_found.append(user_id)
-                            _logger.warning("No se encontró empleado con ID biométrico %s (Usuario: %s)", user_id, user_map.get(user_id, 'Desconocido'))
-                        continue
-                    
-                    # Verificar si ya existe un registro biométrico para esta fecha y hora
+                    # Verificar si ya existe un registro biométrico para la entrada
                     existing_biometric = self.env['biometric.attendance'].search([
                         ('device_id', '=', self.id),
                         ('employee_biometric_id', '=', user_id),
@@ -983,62 +999,75 @@ class BiometricDevice(models.Model):
                     if existing_biometric:
                         existing_records_skipped += 1
                         _logger.debug("Registro ya existe para empleado %s, fecha %s, hora %s", employee.name, fecha, entrada)
-                        continue
-                    
-                    # Obtener status y verify_mode del objeto de asistencia
-                    status_entrada = getattr(entrada_att, 'status', 0)
-                    verify_mode_entrada = getattr(entrada_att, 'punch', 0)  # punch es el verify_mode en zk
-                    
-                    # Crear registro de entrada
-                    biometric_attendance_in = self.env['biometric.attendance'].create({
-                        'device_id': self.id,
-                        'employee_biometric_id': user_id,
-                        'employee_id': employee.id,
-                        'punch_time': entrada,
-                        'punch_state': 'check_in',
-                        'status': status_entrada,
-                        'verify_mode': verify_mode_entrada,
-                    })
-                    biometric_records_created += 1
-                    
-                    # Crear registro de asistencia en hr.attendance desde el biométrico
-                    attendance = biometric_attendance_in.create_attendance_record()
-                    if attendance:
-                        attendance_records_created += 1
-                        _logger.info(
-                            "Registro de asistencia creado para %s - Check_in: %s%s",
-                            employee.name,
-                            entrada.strftime('%Y-%m-%d %H:%M:%S'),
-                            f", Check_out: {salida.strftime('%Y-%m-%d %H:%M:%S')}" if salida else ""
-                        )
-                    
-                    # Si hay salida y es diferente a la entrada, crear registro de salida
-                    if salida and salida != entrada:
-                        status_salida = getattr(salida_att, 'status', 0)
-                        verify_mode_salida = getattr(salida_att, 'punch', 0)
+                    else:
+                        # Obtener status y verify_mode del objeto de asistencia
+                        status_entrada = getattr(entrada_att, 'status', 0)
+                        verify_mode_entrada = getattr(entrada_att, 'punch', 0)  # punch es el verify_mode en zk
                         
-                        biometric_attendance_out = self.env['biometric.attendance'].create({
+                        # Crear registro de entrada
+                        self.env['biometric.attendance'].create({
                             'device_id': self.id,
                             'employee_biometric_id': user_id,
                             'employee_id': employee.id,
-                            'punch_time': salida,
-                            'punch_state': 'check_out',
-                            'status': status_salida,
-                            'verify_mode': verify_mode_salida,
+                            'punch_time': entrada,
+                            'punch_state': 'check_in',
+                            'status': status_entrada,
+                            'verify_mode': verify_mode_entrada,
                         })
                         biometric_records_created += 1
+                    
+                    # Si hay salida y es diferente a la entrada, crear registro de salida
+                    if salida and salida != entrada:
+                        existing_out = self.env['biometric.attendance'].search([
+                            ('device_id', '=', self.id),
+                            ('employee_biometric_id', '=', user_id),
+                            ('punch_time', '=', salida),
+                            ('punch_state', '=', 'check_out')
+                        ], limit=1)
                         
-                        # Actualizar el registro de asistencia con la salida
-                        if attendance:
-                            attendance.write({
-                                'check_out': salida,
-                                'biometric_punch_time': salida,
+                        if not existing_out:
+                            status_salida = getattr(salida_att, 'status', 0)
+                            verify_mode_salida = getattr(salida_att, 'punch', 0)
+                            
+                            self.env['biometric.attendance'].create({
+                                'device_id': self.id,
+                                'employee_biometric_id': user_id,
+                                'employee_id': employee.id,
+                                'punch_time': salida,
+                                'punch_state': 'check_out',
+                                'status': status_salida,
+                                'verify_mode': verify_mode_salida,
                             })
-                            biometric_attendance_out.write({
-                                'attendance_id': attendance.id,
-                                'is_synced': True,
-                                'sync_date': fields.Datetime.now(),
-                            })
+                            biometric_records_created += 1
+                
+                processed_employee_ids.append(employee.id)
+            
+            # Procesar las marcas con las reglas del importador de Excel
+            attendance_error_count = 0
+            attendance_skipped_count = 0
+            for employee_id, marks in marks_by_employee.items():
+                employee = self.env['hr.employee'].browse(employee_id)
+                if not marks:
+                    continue
+                result = self._process_attendance_marks_with_import_rules(employee, marks)
+                attendance_records_created += result.get('imported_count', 0)
+                attendance_skipped_count += result.get('skipped_count', 0)
+                attendance_error_count += result.get('error_count', 0)
+            
+            # Marcar registros biométricos como sincronizados en el rango
+            if processed_employee_ids:
+                fecha_desde_dt = datetime.combine(fecha_desde, time.min) if isinstance(fecha_desde, date) else fecha_desde
+                fecha_hasta_dt = datetime.combine(fecha_hasta, time.max) if isinstance(fecha_hasta, date) else fecha_hasta
+                if fecha_desde_dt and fecha_hasta_dt:
+                    self.env['biometric.attendance'].search([
+                        ('employee_id', 'in', processed_employee_ids),
+                        ('punch_time', '>=', fecha_desde_dt),
+                        ('punch_time', '<=', fecha_hasta_dt),
+                        ('is_synced', '=', False),
+                    ]).write({
+                        'is_synced': True,
+                        'sync_date': fields.Datetime.now(),
+                    })
             
             # Actualizar estado de sincronización
             self.write({
@@ -1275,13 +1304,28 @@ class BiometricDevice(models.Model):
                     self.last_sync, fecha_desde, fecha_hasta, total_attendances
                 )
             
-            # Procesar asistencias (código similar al método directo)
+            # Procesar asistencias con reglas del importador de Excel
             biometric_records_created = 0
             attendance_records_created = 0
             employees_not_found = []
             existing_records_skipped = 0
+            marks_by_employee = defaultdict(list)
+            processed_employee_ids = []
             
             for user_id, fechas in por_usuario.items():
+                # Buscar empleado por ID biométrico
+                employee = self.env['hr.employee'].search([
+                    ('biometric_user_id', '=', str(user_id)),
+                    ('biometric_sync_active', '=', True)
+                ], limit=1)
+                
+                if not employee:
+                    if user_id not in employees_not_found:
+                        employees_not_found.append(user_id)
+                        _logger.warning("No se encontró empleado con ID biométrico %s (Usuario: %s)", 
+                                      user_id, user_map.get(user_id, 'Desconocido'))
+                    continue
+                
                 for fecha, att_list in fechas.items():
                     if not att_list:
                         continue
@@ -1294,18 +1338,9 @@ class BiometricDevice(models.Model):
                     entrada = entrada_att.timestamp
                     salida = salida_att.timestamp if (salida_att and len(att_list_sorted) > 1 and salida_att != entrada_att) else None
                     
-                    # Buscar empleado por ID biométrico
-                    employee = self.env['hr.employee'].search([
-                        ('biometric_user_id', '=', str(user_id)),
-                        ('biometric_sync_active', '=', True)
-                    ], limit=1)
-                    
-                    if not employee:
-                        if user_id not in employees_not_found:
-                            employees_not_found.append(user_id)
-                            _logger.warning("No se encontró empleado con ID biométrico %s (Usuario: %s)", 
-                                          user_id, user_map.get(user_id, 'Desconocido'))
-                        continue
+                    # Guardar todas las marcas para procesarlas con reglas del importador
+                    for att in att_list_sorted:
+                        marks_by_employee[employee.id].append(att.timestamp)
                     
                     # Verificar si ya existe un registro biométrico
                     existing_biometric = self.env['biometric.attendance'].search([
@@ -1318,62 +1353,76 @@ class BiometricDevice(models.Model):
                     if existing_biometric:
                         existing_records_skipped += 1
                         _logger.debug("Registro ya existe para empleado %s, fecha %s, hora %s", 
-                                    employee.name, fecha, entrada)
-                        continue
-                    
-                    # Obtener status y verify_mode
-                    status_entrada = getattr(entrada_att, 'status', 0)
-                    verify_mode_entrada = getattr(entrada_att, 'punch', 0)
-                    
-                    # Crear registro de entrada
-                    biometric_attendance_in = self.env['biometric.attendance'].create({
-                        'device_id': self.id,
-                        'employee_biometric_id': str(user_id),
-                        'employee_id': employee.id,
-                        'punch_time': entrada,
-                        'punch_state': 'check_in',
-                        'status': status_entrada,
-                        'verify_mode': verify_mode_entrada,
-                    })
-                    biometric_records_created += 1
-                    
-                    # Crear registro de asistencia
-                    attendance = biometric_attendance_in.create_attendance_record()
-                    if attendance:
-                        attendance_records_created += 1
-                        _logger.info(
-                            "Registro de asistencia creado para %s - Check_in: %s%s",
-                            employee.name,
-                            entrada.strftime('%Y-%m-%d %H:%M:%S'),
-                            f", Check_out: {salida.strftime('%Y-%m-%d %H:%M:%S')}" if salida else ""
-                        )
-                    
-                    # Si hay salida
-                    if salida and salida != entrada:
-                        status_salida = getattr(salida_att, 'status', 0)
-                        verify_mode_salida = getattr(salida_att, 'punch', 0)
+                                    employee.name, fecha)
+                    else:
+                        # Obtener status y verify_mode
+                        status_entrada = getattr(entrada_att, 'status', 0)
+                        verify_mode_entrada = getattr(entrada_att, 'punch', 0)
                         
-                        biometric_attendance_out = self.env['biometric.attendance'].create({
+                        # Crear registro de entrada
+                        self.env['biometric.attendance'].create({
                             'device_id': self.id,
                             'employee_biometric_id': str(user_id),
                             'employee_id': employee.id,
-                            'punch_time': salida,
-                            'punch_state': 'check_out',
-                            'status': status_salida,
-                            'verify_mode': verify_mode_salida,
+                            'punch_time': entrada,
+                            'punch_state': 'check_in',
+                            'status': status_entrada,
+                            'verify_mode': verify_mode_entrada,
                         })
                         biometric_records_created += 1
+                    
+                    # Si hay salida
+                    if salida and salida != entrada:
+                        existing_out = self.env['biometric.attendance'].search([
+                            ('device_id', '=', self.id),
+                            ('employee_biometric_id', '=', str(user_id)),
+                            ('punch_time', '=', salida),
+                            ('punch_state', '=', 'check_out')
+                        ], limit=1)
                         
-                        if attendance:
-                            attendance.write({
-                                'check_out': salida,
-                                'biometric_punch_time': salida,
+                        if not existing_out:
+                            status_salida = getattr(salida_att, 'status', 0)
+                            verify_mode_salida = getattr(salida_att, 'punch', 0)
+                            
+                            self.env['biometric.attendance'].create({
+                                'device_id': self.id,
+                                'employee_biometric_id': str(user_id),
+                                'employee_id': employee.id,
+                                'punch_time': salida,
+                                'punch_state': 'check_out',
+                                'status': status_salida,
+                                'verify_mode': verify_mode_salida,
                             })
-                            biometric_attendance_out.write({
-                                'attendance_id': attendance.id,
-                                'is_synced': True,
-                                'sync_date': fields.Datetime.now(),
-                            })
+                            biometric_records_created += 1
+                
+                processed_employee_ids.append(employee.id)
+            
+            # Procesar marcas con las reglas del importador
+            attendance_error_count = 0
+            attendance_skipped_count = 0
+            for employee_id, marks in marks_by_employee.items():
+                employee = self.env['hr.employee'].browse(employee_id)
+                if not marks:
+                    continue
+                result = self._process_attendance_marks_with_import_rules(employee, marks)
+                attendance_records_created += result.get('imported_count', 0)
+                attendance_skipped_count += result.get('skipped_count', 0)
+                attendance_error_count += result.get('error_count', 0)
+            
+            # Marcar registros biométricos como sincronizados en el rango
+            if processed_employee_ids:
+                fecha_desde_dt = datetime.combine(fecha_desde, time.min) if isinstance(fecha_desde, date) else fecha_desde
+                fecha_hasta_dt = datetime.combine(fecha_hasta, time.max) if isinstance(fecha_hasta, date) else fecha_hasta
+                if fecha_desde_dt and fecha_hasta_dt:
+                    self.env['biometric.attendance'].search([
+                        ('employee_id', 'in', processed_employee_ids),
+                        ('punch_time', '>=', fecha_desde_dt),
+                        ('punch_time', '<=', fecha_hasta_dt),
+                        ('is_synced', '=', False),
+                    ]).write({
+                        'is_synced': True,
+                        'sync_date': fields.Datetime.now(),
+                    })
             
             # Actualizar estado de sincronización
             self.write({

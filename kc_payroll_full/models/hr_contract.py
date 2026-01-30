@@ -13,7 +13,7 @@ class HrContract(models.Model):
         'employee_id',
         string='Historial de turnos',
         related='employee_id.shift_history_ids',
-        readonly=True
+        readonly=False
     )
 
     current_shift_period = fields.Selection([
