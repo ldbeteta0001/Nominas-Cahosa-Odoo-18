@@ -1188,6 +1188,18 @@ class HrAttendance(models.Model):
                             calendar_name, required_hours
                         )
                 
+                # Si el contrato tiene aplica_horas_extras, calcular horas extra aunque no sea 52/60
+                if not should_calculate_overtime and record.employee_id:
+                    contract = self.env['hr.contract'].search([
+                        ('employee_id', '=', record.employee_id.id),
+                        ('state', '=', 'open'),
+                    ], order='date_start desc', limit=1)
+                    if contract and contract.aplica_horas_extras:
+                        should_calculate_overtime = True
+                        _logger.info(
+                            "_compute_overtime_hours: Contrato con aplica_horas_extras, se calcularán horas extra aunque el horario no sea 52/60"
+                        )
+                
                 if should_calculate_overtime and record.check_out and record.check_out_schedule:
                     user_tz = pytz.timezone(self.env.user.tz or 'UTC')
                     check_out_utc = record.check_out.replace(tzinfo=pytz.UTC)

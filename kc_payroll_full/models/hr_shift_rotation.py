@@ -107,6 +107,7 @@ class HrShiftRotationLine(models.Model):
 
 class HrShiftRotation(models.Model):
     _name = 'hr.shift.rotation'
+    _inherit = ['mail.thread', 'mail.activity.mixin']
     _description = 'Programación de Rotación de Turnos Día/Noche'
     _order = 'name desc, date_created desc'
     _rec_name = 'name'
@@ -387,6 +388,7 @@ class HrShiftRotation(models.Model):
                                     'shift_period': line.shift_period,
                                     'date_from': line.date_from,
                                     'date_to': line.date_to,
+                                    'rotation_id': self.id,
                                     'reason': line.reason or _('Rotación de turno programada desde %s') % self.name,
                                     'changed_by': self.env.user.id
                                 })
@@ -398,6 +400,7 @@ class HrShiftRotation(models.Model):
                                     'shift_period': line.shift_period,
                                     'date_from': line.date_from,
                                     'date_to': False,  # Sin fecha fin = turno actual
+                                    'rotation_id': self.id,
                                     'reason': line.reason or _('Rotación de turno programada desde %s') % self.name,
                                     'changed_by': self.env.user.id
                                 })
@@ -455,6 +458,20 @@ class HrShiftRotation(models.Model):
                          _('Detalle por empleado:\n') + emp_details
             else:
                 message = _('No se generaron asignaciones.')
+            
+            action_label = _('Rotación aplicada')
+            if self.env.context.get('rotation_action') == 'reapply':
+                action_label = _('Rotación reasignada')
+            
+            self.message_post(
+                body=_('%s: empleados=%d, días creados=%d, días actualizados=%d') % (
+                    action_label,
+                    len(affected_employees),
+                    total_days_created,
+                    total_days_updated
+                ),
+                subtype_xmlid='mail.mt_note'
+            )
         
         _logger.info(f"Rotación aplicada: {len(affected_employees)} empleados, {total_days_created} días creados, {total_days_updated} días actualizados")
         
@@ -468,6 +485,86 @@ class HrShiftRotation(models.Model):
                 'sticky': True
             }
         }
+
+    def action_remove_shifts(self):
+        """Eliminar turnos asociados a esta rotación (asignaciones e historial)."""
+        self.ensure_one()
+
+        assignment_model = self.env['hr.employee.shift.assignment']
+        history_model = self.env['hr.employee.shift.history']
+        contract_model = self.env['hr.contract']
+
+        rotation_calendars = self.rotation_line_ids.mapped('resource_calendar_id').filtered(lambda c: c)
+
+        assignments = assignment_model.search([
+            ('rotation_id', '=', self.id)
+        ])
+        assignment_count = len(assignments)
+        assignments.unlink()
+
+        histories = history_model.search([
+            ('rotation_id', '=', self.id)
+        ])
+        history_count = len(histories)
+        histories.unlink()
+
+        contract_updated = 0
+        employee_updated = 0
+
+        if self.employee_ids:
+            # Limpiar horarios en contratos/empleados si provienen de esta rotación
+            if rotation_calendars:
+                contracts = contract_model.search([
+                    ('employee_id', 'in', self.employee_ids.ids),
+                    ('state', '=', 'open'),
+                    ('resource_calendar_id', 'in', rotation_calendars.ids)
+                ])
+                contract_updated = len(contracts)
+                if contracts:
+                    contracts.write({'resource_calendar_id': False})
+
+                employees_to_clear = self.employee_ids.filtered(
+                    lambda e: e.resource_calendar_id and e.resource_calendar_id.id in rotation_calendars.ids
+                )
+                employee_updated = len(employees_to_clear)
+                if employees_to_clear:
+                    employees_to_clear.write({'resource_calendar_id': False})
+
+            self.employee_ids.invalidate_recordset(['current_shift_period', 'shift_history_ids'])
+            self.employee_ids._compute_current_shift_period()
+
+        self.write({'state': 'cancelled'})
+
+        self.message_post(
+            body=_('Turnos eliminados: asignaciones=%d, historial=%d, contratos=%d, empleados=%d') % (
+                assignment_count,
+                history_count,
+                contract_updated,
+                employee_updated
+            ),
+            subtype_xmlid='mail.mt_note'
+        )
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Turnos Eliminados'),
+                'message': _('Se eliminaron %d asignaciones, %d registros de historial, %d contratos y %d empleados.') % (
+                    assignment_count,
+                    history_count,
+                    contract_updated,
+                    employee_updated
+                ),
+                'type': 'success',
+                'sticky': False
+            }
+        }
+
+    def action_reassign_shifts(self):
+        """Reasignar turnos usando la misma rotación."""
+        self.ensure_one()
+        return self.with_context(rotation_action='reapply').action_apply()
 
     def action_cancel(self):
         """Cancelar la programación"""

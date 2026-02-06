@@ -16,6 +16,7 @@
     'website': 'https://www.kenosiscompany.com',
     'depends': [
         'base',
+        'mail',
         'hr',
         'hr_contract',
         'hr_payroll',

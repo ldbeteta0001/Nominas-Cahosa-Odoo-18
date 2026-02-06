@@ -31,6 +31,12 @@ class HrContract(models.Model):
         help='Marcar si el empleado es mecánico. Los sábados se calcularán al 50% en lugar de 25%.'
     )
 
+    aplica_horas_extras = fields.Boolean(
+        string='Aplica Horas Extras',
+        default=False,
+        help='Indica si el contrato aplica para el cálculo de horas extras.'
+    )
+
     @api.depends('employee_id.shift_history_ids.is_current', 'employee_id.shift_history_ids.shift_period', 'employee_id.shift_history_ids.date_from', 'employee_id.current_shift_period')
     def _compute_current_shift_period(self):
         for contract in self:

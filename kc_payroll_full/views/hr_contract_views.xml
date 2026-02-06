@@ -11,6 +11,9 @@
                 <field name="es_mecanico"
                        string="Es Mecánico"
                        help="Marcar si el empleado es mecánico. Los sábados se calcularán al 50% en lugar de 25%."/>
+                <field name="aplica_horas_extras"
+                       string="Aplica Horas Extras"
+                       help="Indica si el contrato aplica para el cálculo de horas extras."/>
                 <field name="current_shift_period"
                        string="Turno Actual"
                        readonly="1"
@@ -56,4 +59,5 @@
             </xpath>
         </field>
     </record>
+
 </odoo>

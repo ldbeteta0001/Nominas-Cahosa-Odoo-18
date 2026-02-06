@@ -18,6 +18,13 @@ class HrEmployeeShiftHistory(models.Model):
         ondelete='cascade',
         index=True
     )
+    rotation_id = fields.Many2one(
+        'hr.shift.rotation',
+        string='Rotación',
+        ondelete='set null',
+        index=True,
+        help='Rotación que generó este registro de historial'
+    )
     shift_period = fields.Selection([
         ('dia', 'Día'),
         ('noche', 'Noche')

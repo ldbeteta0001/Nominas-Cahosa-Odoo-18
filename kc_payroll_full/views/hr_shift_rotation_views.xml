@@ -42,6 +42,16 @@
                                 type="object"
                                 class="oe_highlight"
                                 invisible="state != 'draft'"/>
+                        <button name="action_remove_shifts"
+                                string="Eliminar Turnos"
+                                type="object"
+                                class="btn-secondary"
+                                invisible="state != 'applied'"/>
+                        <button name="action_reassign_shifts"
+                                string="Asignar Turno Nuevamente"
+                                type="object"
+                                class="btn-secondary"
+                                invisible="state != 'cancelled'"/>
                         <button name="action_reset_to_draft"
                                 string="Resetear a Borrador"
                                 type="object"
@@ -148,6 +158,7 @@
                             </page>
                         </notebook>
                     </sheet>
+                    <chatter/>
                 </form>
             </field>
         </record>
